@@ -1,0 +1,6 @@
+"""Time stamps."""
+from datetime import datetime
+
+
+def now_iso():
+    return datetime.now().isoformat(timespec="seconds")

@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+pyzipper
+paramiko
+httpx
+pyyaml==6.0.3
+smbprotocol

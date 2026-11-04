@@ -1,0 +1,30 @@
+.field{display:flex;flex-direction:column;gap:6px}
+.field>label,.lbl{font-size:13px;line-height:18px;font-weight:500}
+.help{font-size:13px;line-height:18px;color:var(--fg-muted)}
+.err{font-size:13px;line-height:18px;color:var(--danger);display:flex;gap:6px;align-items:flex-start}
+.err .ico{margin-top:1px}
+.input{width:100%;height:var(--h-ctl);padding:0 var(--s3);border:1px solid var(--border-strong);border-radius:var(--r-sm);background:var(--surface);min-width:0;transition:border-color var(--dur) ease-out}
+textarea.input{height:auto;padding:var(--s2) var(--s3);resize:vertical;font-family:var(--mono);font-size:12.5px;line-height:20px}
+select.input{padding-right:var(--s6);appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--fg-muted) 50%),linear-gradient(135deg,var(--fg-muted) 50%,transparent 50%);background-position:calc(100% - 17px) 50%,calc(100% - 12px) 50%;background-size:5px 5px;background-repeat:no-repeat}
+.input:focus{outline:none;border-color:var(--accent);box-shadow:var(--focus)}
+.input[aria-invalid=true]{border-color:var(--danger)}
+.input[disabled]{opacity:.6}
+.input::placeholder{color:var(--fg-faint)}
+.pw{position:relative}
+.pw .input{padding-right:44px}
+.pw .eye{position:absolute;right:2px;top:50%;transform:translateY(-50%);width:32px;height:32px;border:0;background:none;color:var(--fg-muted);border-radius:var(--r-sm);cursor:pointer;display:grid;place-items:center}
+.pw .eye:hover{color:var(--fg)}
+/* label column + control column forms (settings pages) */
+.form-grid{display:grid;grid-template-columns:140px minmax(0,1fr);gap:var(--s4) var(--s4);align-items:start}
+.form-grid>.lbl{padding-top:9px}
+.form-grid .ctl{display:flex;flex-direction:column;gap:6px;min-width:0}
+.test-res{display:flex;gap:var(--s2);align-items:flex-start;font-size:13px;margin-top:var(--s3)}
+.test-res.ok{color:var(--success)} .test-res.bad{color:var(--danger)} .test-res.bad span{font-family:var(--mono);font-size:12.5px;word-break:break-word}
+@media (max-width:640px){
+  .form-grid{grid-template-columns:1fr;gap:6px}
+  .form-grid>.lbl{padding-top:var(--s3)}
+}
+@media (max-width:480px){
+  .input,select.input,textarea.input{font-size:16px}
+  .input{height:var(--h-ctl-lg)}
+}

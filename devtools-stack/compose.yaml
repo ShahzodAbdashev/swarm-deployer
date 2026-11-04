@@ -1,0 +1,36 @@
+# Both tools in one command:  cd devtools-stack && GH_TOKEN=$(gh auth token) docker compose up -d --build
+# UIs: http://127.0.0.1:8090 (Build Packager) · http://127.0.0.1:8095 (Swarm Deployer)
+name: devtools
+
+x-shared-ui: &shared-ui
+  shared-ui: ../shared-ui
+
+services:
+  build-packager:
+    build: {context: ../build-packager, additional_contexts: *shared-ui}
+    image: devtools/build-packager:local
+    # host network: apps still bind 127.0.0.1 only, and reach servers on localhost exactly like run.sh does
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      GH_TOKEN: ${GH_TOKEN:-}            # "Continue with GitHub" uses it; or paste a token in the UI
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+    volumes:
+      - bp-data:/app/data
+      - /etc/localtime:/etc/localtime:ro             # host timezone: <service>_<datetime> names match your clock
+      - /var/run/docker.sock:/var/run/docker.sock   # docker build/save run on the host daemon (no swarm commands)
+      - ${HOME}/.ssh:/root/.ssh:ro                   # for SFTP private-key upload: use ~/.ssh/<key> in Settings
+
+  swarm-deployer:
+    build: {context: ../swarm-deployer, additional_contexts: *shared-ui}
+    image: devtools/swarm-deployer:local
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - sd-data:/data
+      - /etc/localtime:/etc/localtime:ro
+      - ${HOME}/.ssh:/root/.ssh:ro
+
+volumes:
+  bp-data:
+  sd-data:

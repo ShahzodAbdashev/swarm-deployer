@@ -1,8 +1,8 @@
-# runtime data: config.json (passwords, tokens), deploy logs, known_hosts, keys
-data/
-.venv/
+# runtime data: config.json (passwords, tokens), job logs, workspaces, keys
+**/data/
+**/.venv/
 __pycache__/
 *.pyc
-frontend/node_modules/
-frontend/dist/
+**/node_modules/
+**/dist/
 *.log
