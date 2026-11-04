@@ -2,12 +2,9 @@
 # UIs: http://127.0.0.1:8090 (Build Packager) · http://127.0.0.1:8095 (Swarm Deployer)
 name: devtools
 
-x-shared-ui: &shared-ui
-  shared-ui: ../shared-ui
-
 services:
   build-packager:
-    build: {context: ../build-packager, additional_contexts: *shared-ui}
+    build: {context: ../build-packager}
     image: devtools/build-packager:local
     # host network: apps still bind 127.0.0.1 only, and reach servers on localhost exactly like run.sh does
     network_mode: host
@@ -22,7 +19,7 @@ services:
       - ${HOME}/.ssh:/root/.ssh:ro                   # for SFTP private-key upload: use ~/.ssh/<key> in Settings
 
   swarm-deployer:
-    build: {context: ../swarm-deployer, additional_contexts: *shared-ui}
+    build: {context: ../swarm-deployer}
     image: devtools/swarm-deployer:local
     network_mode: host
     restart: unless-stopped

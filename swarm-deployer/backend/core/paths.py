@@ -1,4 +1,4 @@
-"""Data directory layout (SD_DATA) and the built UI folder. Creates the data dirs on import."""
+"""Data directory layout (SD_DATA) and the static UI folder. Creates the data dirs on import."""
 import os
 
 BASE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # swarm-deployer/
@@ -9,7 +9,7 @@ WORK = os.path.join(DATA, "work")
 CONFIG = os.path.join(DATA, "config.json")
 KNOWN_HOSTS = os.path.join(DATA, "known_hosts")
 KEYS = os.path.join(DATA, "keys")
-DIST = os.path.join(BASE, "frontend", "dist")  # React build output (frontend/, `npm run build`; run.sh builds it)
+UI = os.path.realpath(os.path.join(BASE, "frontend"))  # static UI (index.html, app.css, js/*.js), served as-is
 
 for _d in (DATA, DEPLOYS, WORK):
     os.makedirs(_d, exist_ok=True)

@@ -31,7 +31,7 @@ async def validation_400(_req, exc):
     return JSONResponse({"detail": f"{field}: {e.get('msg', 'invalid')}"}, status_code=400)
 
 
-for r in (ui, settings, targets, packages, services, deploys, env):
+for r in (settings, targets, packages, services, deploys, env, ui):  # ui last: its catch-all file route
     app.include_router(r.router)
 
 

@@ -8,10 +8,10 @@ SFTP / FTP / FTPS / SMB. Every log line and step status is live in the UI.
 ## Run
 
 ```bash
-./run.sh            # creates .venv, installs requirements, builds the UI if needed, serves http://127.0.0.1:8090/
+./run.sh            # creates .venv, installs requirements, serves http://127.0.0.1:8090/
 ```
 
-Requirements on the host: Python 3.12, Node 18+ with npm (to build the UI), git, Docker (usable by the current user),
+Requirements on the host: Python 3.12, git, Docker (usable by the current user),
 optionally `gh` CLI.
 Optional: `GITHUB_CLIENT_ID=<oauth app client id> ./run.sh` enables "Sign in with GitHub (device flow)".
 Optional: `GITLAB_URL`, `GITLAB_CLIENT_ID`, `GITLAB_CLIENT_SECRET`, `BP_ENV_FILE` (see below).
@@ -115,7 +115,7 @@ backend/                   FastAPI backend
   api/schemas.py           request bodies (pydantic)
   api/routes/              one router per area: auth (GitLab + GitHub sign-in), gitlab (settings, projects,
                            branches, .env preview), github, upload (settings + test), jobs (builds, logs,
-                           downloads), env (.env import), ui (serves frontend/dist)
+                           downloads), env (.env import), ui (serves the static files in frontend/)
   core/                    paths (data layout), enums (JobStatus, Step, Protocol, ...), constants, patterns
                            (validation regexes), errors (StepFailed, Skip, bad -> HTTP 400)
   utils/                   dates, files (atomic private JSON)
@@ -126,17 +126,16 @@ backend/                   FastAPI backend
   envfile/                 parser (.env), gitlab_ci (.gitlab-ci.yml export_env -> .env), apply (settings)
   remote/upload.py         SFTP / FTP / FTPS / SMB upload (atomic .part rename)
   jobs/                    store (job files), runner (build steps), manager (restart recovery)
-frontend/                  React 19 + TypeScript + Vite UI
-  src/main.tsx, App.tsx    entry, boot (auth status), route -> page
-  src/router.ts            hash routes #/login #/dashboard #/new/<step> #/jobs/<id> #/settings, redirects, guards
-  src/api/                 client.ts (fetch wrapper, 401 handling), endpoints.ts (auth, github, upload, jobs)
-  src/types/api.ts         API types (SPEC.md §4–5)
-  src/state/               session.ts (auth + per-tab caches), draft.ts (wizard form, sessionStorage minus passwords)
-  src/lib/                 validation, job helpers, repo prefetch, delete dialog
-  src/components/TopBar.tsx
-  src/pages/               Login/  Dashboard/  NewBuild/ (wizard shell + steps/*)  Run/  Settings/
-  src/styles/app.css       screen-specific styles
-../shared-ui/              @devtools/ui: tokens, components, hooks shared with Swarm Deployer (see its README)
+frontend/                  static UI: plain HTML, CSS and browser-native JS modules (no npm, no build step)
+  index.html               page shell, icon sprite, toast / dialog / live-region hosts
+  app.css                  design tokens (light + dark via prefers-color-scheme), base, components, screens
+  js/main.js               boot (auth status), top bar, route -> page (each page returns a cleanup)
+  js/state.js              API client + endpoints (401 handling), auth, per-tab session caches, wizard draft
+                           (sessionStorage minus passwords), hash router (#/login #/dashboard #/new/<step>
+                           #/jobs/<id> #/settings) with redirects and leave guards
+  js/ui.js                 h() element helper, icons, fields, toasts, confirm dialog, menus, formatting
+  js/lib.js                validation, job helpers, delete dialog
+  js/login.js  dashboard.js  wizard.js (shell, rebuild)  steps.js (wizard steps)  run.js (live log)  settings.js
 tests/e2e_test.py          API + pipeline end-to-end (176 checks)
 tests/ui_test.py           Playwright browser flow (138 checks)
 ```
@@ -144,12 +143,9 @@ tests/ui_test.py           Playwright browser flow (138 checks)
 ## Develop
 
 ```bash
-./run.sh                                   # backend on :8090 (builds the UI once)
-cd frontend && npm run dev                 # Vite on :5173 with hot reload, /api proxied to :8090
-cd frontend && npm run typecheck           # tsc --noEmit (also checks ../shared-ui)
-cd frontend && npm run build               # -> frontend/dist, served by the backend
-.venv/bin/python tests/e2e_test.py         # uses frontend/dist: build first
+./run.sh                                   # backend on :8090, also serves the UI from frontend/
+.venv/bin/python tests/e2e_test.py
 <playwright venv>/bin/python tests/ui_test.py
 ```
-`run.sh` rebuilds `frontend/dist` whenever a file in `frontend/src`, `frontend/index.html`, `frontend/package.json`
-or `../shared-ui/src` is newer than the last build, and runs `npm ci` when `package-lock.json` changed.
+The UI has no build step: edit `frontend/` and reload the page (HTML/CSS/JS are served with `Cache-Control: no-cache`).
+Server data is only ever inserted as text (`textContent` / `h()` children), never as HTML.

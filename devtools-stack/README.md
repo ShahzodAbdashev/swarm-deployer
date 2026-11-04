@@ -9,7 +9,7 @@ docker compose logs -f                                   # live logs
 docker compose down                                      # stop (data volumes are kept)
 ```
 
-- **Images** build from `../build-packager/Dockerfile` and `../swarm-deployer/Dockerfile`, with `../shared-ui` passed as an extra build context. The UI is built inside the image, so the host needs no Node or venv.
+- **Images** build from `../build-packager/Dockerfile` and `../swarm-deployer/Dockerfile`. The UI is plain HTML/CSS/JS served as-is, so neither the host nor the image needs Node.
 - **Host network:** both apps still listen on 127.0.0.1 only, and can reach servers on localhost exactly like `run.sh`.
 - **Data** is kept in the volumes `devtools_bp-data` and `devtools_sd-data`. It starts empty, separate from the `data/` folders that `run.sh` uses, so sign in and enter Settings once.
 - **GitHub:** `GH_TOKEN` makes "Continue with GitHub" work. Without it, paste a token on the sign-in screen. Set `GITHUB_CLIENT_ID` to enable device-flow sign-in.

@@ -9,7 +9,7 @@ Backend and frontend are built in parallel from this file. If something is not i
 | Path | Purpose |
 |---|---|
 | `app.py` + `backend/` | FastAPI app (`app.py` is the entry point; modules in `backend/`, see README Structure). Serves the built UI: `frontend/dist/index.html` at `GET /` (503 with a hint if not built) and `frontend/dist/assets/*` at `GET /assets/{name}`. |
-| `frontend/` | UI: React 19 + TypeScript + Vite (`src/pages`, `src/api`, `src/state`, `src/types`, …). `npm run build` → `frontend/dist`. No CDN at runtime. |
+| `frontend/` | UI: plain HTML, CSS and vanilla JavaScript (`index.html`, `app.css`, `js/*.js`), served as-is. No npm, no build, no CDN. |
 | `../shared-ui/` | `@devtools/ui`, the design system shared with Swarm Deployer (tokens, components, hooks), consumed as TypeScript source. |
 | `requirements.txt` | `fastapi`, `uvicorn`, `pyzipper`, `paramiko`, `httpx` (GitHub and GitLab API calls), `pyyaml`, `smbprotocol` (SMB upload, §11.6). |
 | `run.sh` | Creates `.venv` with `python3 -m venv .venv` if it is missing, runs `pip install -r requirements.txt`, builds the UI (`npm ci` + `npm run build` in `frontend/`) when `frontend/dist` is missing or older than its sources, then `exec .venv/bin/uvicorn app:app --host 127.0.0.1 --port 8090`. |

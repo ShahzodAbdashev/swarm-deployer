@@ -61,7 +61,7 @@ def start_server(tmp):
     os.makedirs(app)
     shutil.copy(os.path.join(ROOT, "app.py"), app)
     shutil.copytree(os.path.join(ROOT, "backend"), os.path.join(app, "backend"), ignore=shutil.ignore_patterns("__pycache__"))
-    shutil.copytree(os.path.join(ROOT, "frontend", "dist"), os.path.join(app, "frontend", "dist"))  # built UI
+    shutil.copytree(os.path.join(ROOT, "frontend"), os.path.join(app, "frontend"))  # static UI
     env = {k: v for k, v in os.environ.items()
                if k not in ("GITHUB_CLIENT_ID", "BP_ENV_FILE") and not k.startswith("GITLAB_")}
     logf = open(os.path.join(tmp, "server.log"), "w")

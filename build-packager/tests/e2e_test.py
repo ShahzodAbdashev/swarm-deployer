@@ -1,6 +1,6 @@
 """End-to-end test for Build Packager. Run: .venv/bin/python tests/e2e_test.py
 
-app.py has no data-dir env override, so the test copies app.py + backend/ + frontend/dist/ into a temp dir and runs
+app.py has no data-dir env override, so the test copies app.py + backend/ + frontend/ into a temp dir and runs
 that copy (BASE = dirname(__file__)), which keeps the real data/ untouched.
 Needs: docker (busybox:latest + atmoz/sftp), git, gh logged in, network. FTP needs pyftpdlib
 (tests/requirements-test.txt).
@@ -60,7 +60,7 @@ class Server:
         shutil.copy(os.path.join(ROOT, "app.py"), self.app)
         shutil.copytree(os.path.join(ROOT, "backend"), os.path.join(self.app, "backend"),
                         ignore=shutil.ignore_patterns("__pycache__"))
-        shutil.copytree(os.path.join(ROOT, "frontend", "dist"), os.path.join(self.app, "frontend", "dist"))  # built UI
+        shutil.copytree(os.path.join(ROOT, "frontend"), os.path.join(self.app, "frontend"))  # static UI
         self.data = os.path.join(self.app, "data")
         self.port = free_port()
         env = {k: v for k, v in os.environ.items()
@@ -188,11 +188,10 @@ def fixtures(tmp):
 # ---------------------------------------------------------------- sections
 
 def ui_source():
-    """All UI source text: frontend/src plus the shared @devtools/ui kit it is built from."""
+    """All UI source text: the static JS modules in frontend/js."""
     parts = []
-    for root in (os.path.join(ROOT, "frontend", "src"), os.path.join(ROOT, "..", "shared-ui", "src")):
-        for dp, _, fs in os.walk(root):
-            parts += [open(os.path.join(dp, f)).read() for f in sorted(fs) if f.endswith((".ts", ".tsx"))]
+    for dp, _, fs in os.walk(os.path.join(ROOT, "frontend", "js")):
+        parts += [open(os.path.join(dp, f)).read() for f in sorted(fs) if f.endswith(".js")]
     return "\n".join(parts)
 
 
@@ -215,11 +214,14 @@ def t_ui_and_paths(srv):
     def flat(rs):  # FastAPI keeps each included router as one entry: expand them
         for r in rs:
             yield from flat(r.original_router.routes) if hasattr(r, "original_router") else [r]
-    routes = [(r.path_regex, getattr(r, "methods", set())) for r in flat(mod.app.routes)]
-    # the UI is a React app: scan its TypeScript sources (and the shared kit) instead of the minified bundle
+    # the UI's catch-all static-file route matches any path: leave it out so only real API routes count
+    routes = [(r.path_regex, getattr(r, "methods", set())) for r in flat(mod.app.routes) if getattr(r, "path", "") != "/{path:path}"]
     src = ui_source()
-    st_a, _, raw_a = srv.req("GET", "/" + re.search(r'src="/(assets/[^"]+\.js)"', html).group(1))
-    check("UI bundle served from /assets", st_a == 200 and len(raw_a) > 10000, (st_a, len(raw_a)))
+    st_a, h_a, raw_a = srv.req("GET", "/" + re.search(r'src="(js/main\.js)"', html).group(1))
+    check("UI entry module served from /js", st_a == 200 and "javascript" in h_a.get("content-type", "") and b"import" in raw_a,
+          (st_a, h_a.get("content-type")))
+    st_t, _, _ = srv.req("GET", "/..%2fapp.py")
+    check("UI static route refuses paths outside frontend/", st_t == 404, st_t)
     used = set()
     for m in re.finditer(r"""['"`](/api/[^'"`]*)['"`]?""", src):
         p = re.sub(r"\$\{[^}]+\}", "X" * 32, m.group(1)).split("?")[0]

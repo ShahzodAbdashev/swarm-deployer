@@ -33,7 +33,7 @@ Nothing runs on the local machine. The zip password is used for one deploy only.
 ## Run
 
 ```
-./run.sh                    # creates .venv, installs requirements, builds the UI (Node 18+), serves http://127.0.0.1:8095/
+./run.sh                    # creates .venv, installs requirements, serves http://127.0.0.1:8095/ (UI included, no build)
 SD_DATA=/some/dir ./run.sh  # use another data dir (config, job logs, known_hosts, imported SSH keys)
 SD_ENV_FILE=/x/sd.env ./run.sh   # import this .env at startup instead of ./.env (see "Setup from a .env")
 ```
@@ -56,7 +56,7 @@ backend/                   FastAPI backend
   main.py                  app, middleware (cross-site, trusted host), routers, startup
   api/deps.py              request helpers
   api/routes/              one router per area: settings, targets, mappings, packages, services,
-                           deploys (+ rollbacks, logs), env (.env / GitLab import), ui (serves frontend/dist)
+                           deploys (+ rollbacks, logs), env (.env / GitLab import), ui (serves frontend/ files)
   core/                    paths (SD_DATA layout), enums (JobStatus, Phase, Protocol, ...), constants (defaults,
                            limits), patterns (validation regexes), errors (Fail, Skip, bad -> HTTP 400)
   utils/                   dates, files (atomic private JSON), text, images (image refs, package names)
@@ -67,31 +67,27 @@ backend/                   FastAPI backend
   jobs/                    store (job files, busy set), manager (new/start/recover), runner/ (base, package
                            phases, deploy phases, rollback; Runner combines them)
   envimport/               keys (.env names -> settings), parser, apply
-frontend/                  React 19 + TypeScript + Vite UI
-  src/main.tsx, App.tsx    entry, route -> page
-  src/router.ts            hash routes #/dashboard #/services/<pkg> #/new/<step> #/deploys/<id> #/settings/<section>
-  src/api/                 client.ts (fetch wrapper), endpoints.ts (config, targets, mappings, packages, services, deploys, rollbacks)
-  src/types/api.ts         API types (SPEC.md §3–5, §10)
-  src/state/               draft.ts (wizard: sessionStorage sd.draft minus the password), session.ts (per-tab flags)
-  src/lib/                 format, validate, job/phase helpers + deploy log classifier
-  src/components/          TopBar, JobRow, MappingForm (wizard + Settings), GridRow/TestRes (settings form rows)
-  src/pages/               Dashboard/ (setup checklist, service rows)  NewDeploy/ (wizard frame + steps/*)
-                           Run/ (pipeline, log, result)  Service/ (running now, backups + rollback, history)
-                           Settings/ (file server, targets, mappings, options, GitLab, import cards)
-  src/styles/app.css       screen-specific styles
-../shared-ui/              @devtools/ui: tokens, components, hooks shared with Build Packager (see its README)
+frontend/                  static UI: hand-written HTML, CSS and browser-native ES modules (no npm, no build)
+  index.html               page shell (top bar, main, toast / live-region / dialog hosts)
+  app.css                  design tokens (light + dark via prefers-color-scheme), base, components, screens
+  js/ui.js                 tiny kit: h() element helper, icons, fetch wrapper, toast / confirm / announce, menu, hash router
+  js/app.js                API endpoints, formatting, job/phase helpers, validators, wizard draft (sessionStorage sd.draft minus the password)
+  js/main.js               hash routes #/dashboard #/services/<pkg> #/new/<step> #/deploys/<id> #/settings/<section> -> page
+  js/dashboard.js          setup checklist, stat tiles, services, recent deploys
+  js/wizard.js             New deploy: package -> password -> review
+  js/run.js                deploy/rollback: pipeline, result card, live log (SSE)
+  js/service.js            running now, backups + rollback, history
+  js/settings.js           file server, targets, options, GitLab, import cards
 ```
 
 ## Develop
 
 ```bash
-./run.sh                                   # backend on :8095 (builds the UI when missing or stale)
-cd frontend && npm run dev                 # Vite on :5173 with hot reload, /api proxied to :8095
-cd frontend && npm run typecheck           # tsc --noEmit (also checks ../shared-ui)
-cd frontend && npm run build               # -> frontend/dist, served by the backend
+./run.sh                                   # backend on :8095, serves frontend/ as-is
 ```
-`run.sh` rebuilds `frontend/dist` whenever `frontend/src`, `frontend/index.html`, `frontend/package.json` or
-`../shared-ui/src` is newer than the last build, and runs `npm ci` when `package-lock.json` changed.
+The UI has no build step and no packages: edit `frontend/` and reload the page (html/css/js are served with
+`Cache-Control: no-cache`). Server data is only ever put into the DOM as text (`h()` / `textContent`, never `innerHTML`).
+Syntax check (ES modules): `for f in frontend/js/*.js; do node --input-type=module --check < "$f"; done`.
 
 ## Configure (Settings page, or the API)
 

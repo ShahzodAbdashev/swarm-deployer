@@ -16,8 +16,8 @@ The design follows from that brief:
 
 ## 0. Hard constraints (do not break)
 
-The UI is a React + TypeScript app in `frontend/` built on the shared kit `../shared-ui` (`@devtools/ui`).
-`tests/e2e_test.py` checks the UI **source** (`frontend/src` + `shared-ui/src`) as text. The rules:
+The UI is plain HTML, CSS and vanilla JavaScript in `frontend/` (no npm, no build).
+`tests/e2e_test.py` checks the UI **source** (`frontend/`) as text. The rules:
 
 1. No CDN and no webfonts; everything is bundled by Vite into `frontend/dist`. The only external resource is the GitHub `avatar_url` `<img>`. If it fails to load, show a circle with the first letter of the login.
 2. The literals `innerHTML` and `dangerouslySetInnerHTML` must not appear anywhere in the source, **including comments**. React renders all text as text.
@@ -946,7 +946,7 @@ Run these at 1280×800 and at 375×812, in light and in dark mode (DevTools → 
 39. **UX-39** In dark mode, every screen uses the dark tokens and has no white flashes. The log console is dark in both themes, and text contrast passes AA (Lighthouse a11y has no contrast failures).
 40. **UX-40** With `prefers-reduced-motion: reduce`, there are no transitions, the spinners are static rings and there is no skeleton shimmer.
 41. **UX-41** On every route change, focus moves to the h1 and `document.title` updates. While a job runs, the run view tab title starts with "●".
-42. **UX-42** `python tests/e2e_test.py` passes. `grep -rc innerHTML frontend/src ../shared-ui/src` finds nothing. The network panel shows no request to any external host other than avatars.githubusercontent.com.
+42. **UX-42** `python tests/e2e_test.py` passes. `grep -rc innerHTML frontend/` finds nothing. The network panel shows no request to any external host other than avatars.githubusercontent.com.
 43. **UX-43** GitLab login: `#gl-continue` "Continue with GitLab" first, then `p.or`, then the GitHub block; with OAuth it navigates to
    `/api/auth/gitlab/start` and has focus, without OAuth "Continue with GitHub" has focus and `#gl-continue` opens `form#gl-token`
    (`#gl-url`, `#gl-pat`, `#gl-pat-err`, Back). Errors per §4.1. Footnote "Runs locally · tokens stay on this computer".

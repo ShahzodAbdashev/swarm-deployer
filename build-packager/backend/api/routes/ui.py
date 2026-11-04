@@ -1,25 +1,25 @@
-"""Serves the built React UI."""
+"""Serves the static UI in frontend/ (plain HTML, CSS and JS modules; no build step)."""
 import os
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse
 
-from backend.core.paths import DIST
+from backend.core.paths import UI
 
 router = APIRouter()
+NO_CACHE = {"Cache-Control": "no-cache"}  # always revalidate: edits to the UI show up on the next reload
 
 
 @router.get("/")
 def index():
-    page = os.path.join(DIST, "index.html")
-    if not os.path.isfile(page):
-        return PlainTextResponse("UI not built: run ./run.sh (or cd frontend && npm ci && npm run build)", status_code=503)
-    return FileResponse(page, media_type="text/html")
+    return FileResponse(os.path.join(UI, "index.html"), media_type="text/html", headers=NO_CACHE)
 
 
-@router.get("/assets/{name}")
-def asset(name: str):
-    path = os.path.join(DIST, "assets", os.path.basename(name))  # flat dir: no traversal
-    if not os.path.isfile(path):
+@router.get("/{path:path}")
+def static_file(path: str):
+    """Any file inside frontend/ (no dotfiles, no traversal). Registered last so it never shadows the API."""
+    full = os.path.realpath(os.path.join(UI, path))
+    if (path.startswith("api/") or not full.startswith(UI + os.sep) or not os.path.isfile(full)
+            or any(p.startswith(".") for p in path.split("/"))):
         raise HTTPException(404, "not found")
-    return FileResponse(path, headers={"Cache-Control": "public, max-age=31536000, immutable"})
+    return FileResponse(full, headers=NO_CACHE)

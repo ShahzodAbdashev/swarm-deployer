@@ -6,7 +6,7 @@ DATA = os.path.join(BASE, "data")
 JOBS = os.path.join(DATA, "jobs")
 WS = os.path.join(DATA, "workspace")
 CONFIG = os.path.join(DATA, "config.json")
-DIST = os.path.join(BASE, "frontend", "dist")  # React build output (`npm run build`; run.sh builds it when needed)
+UI = os.path.realpath(os.path.join(BASE, "frontend"))  # static UI (index.html, app.css, js/), served as-is
 
 for d in (DATA, JOBS, WS):
     os.makedirs(d, exist_ok=True)

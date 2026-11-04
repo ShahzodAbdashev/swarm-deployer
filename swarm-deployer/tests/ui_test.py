@@ -152,18 +152,16 @@ def api_get(path):
 # ------------------------------------------------------------------ static checks (AC-31)
 
 def ui_source():
-    """All UI source text: frontend/src plus the shared @devtools/ui kit it is built from (the bundle is minified)."""
+    """All UI source text: the static frontend/ files (index.html, app.css, js/*.js)."""
     parts = []
-    for root in (os.path.join(ROOT, "frontend", "src"), os.path.join(ROOT, "..", "shared-ui", "src")):
-        for dp, _, fs in os.walk(root):
-            parts += [open(os.path.join(dp, f)).read() for f in sorted(fs) if f.endswith((".ts", ".tsx", ".css", ".html"))]
-    parts.append(open(os.path.join(ROOT, "frontend", "index.html")).read())
+    for dp, _, fs in os.walk(os.path.join(ROOT, "frontend")):
+        parts += [open(os.path.join(dp, f)).read() for f in sorted(fs) if f.endswith((".js", ".css", ".html"))]
     return "\n".join(parts)
 
 
 def static_checks():
     src = ui_source()
-    check("static: no innerHTML (incl. dangerouslySetInnerHTML)", "innerHTML" not in src)
+    check("static: no innerHTML", "innerHTML" not in src)
     check("static: EventSource / addEventListener('end' / es.close()",
           all(s in src for s in ("EventSource", "addEventListener('end'", "es.close()")))
     check("static: no external resources", not re.search(r"""(src|href)=["']https?://""", src), "external url")

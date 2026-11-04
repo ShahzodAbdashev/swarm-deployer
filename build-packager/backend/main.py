@@ -27,7 +27,7 @@ async def same_origin(request: Request, call_next):
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost"])
 
 
-for r in (ui, auth, gitlab, env, github, upload, jobs):
+for r in (auth, gitlab, env, github, upload, jobs, ui):  # ui last: its catch-all file route must not shadow the API
     app.include_router(r.router)
 
 

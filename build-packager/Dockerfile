@@ -1,14 +1,5 @@
 # syntax=docker/dockerfile:1
-# Build:  docker build --build-context shared-ui=../shared-ui -t devtools/build-packager .
-# (docker compose in ../devtools-stack passes the shared-ui context for you)
-
-FROM node:20 AS ui
-WORKDIR /src
-COPY --from=shared-ui . shared-ui/
-COPY frontend/package.json frontend/package-lock.json frontend/.npmrc app/frontend/
-RUN cd app/frontend && npm ci --no-audit --no-fund
-COPY frontend/ app/frontend/
-RUN cd app/frontend && npm run build
+# Build:  docker build -t devtools/build-packager .   (or docker compose in ../devtools-stack)
 
 FROM python:3.12-slim-bookworm
 # git: clone · gh: "Use gh CLI token" (reads GH_TOKEN) · docker CLI + buildx: builds on the mounted host daemon
@@ -21,6 +12,6 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY app.py ./
 COPY backend/ backend/
-COPY --from=ui /src/app/frontend/dist frontend/dist
+COPY frontend/ frontend/
 # 127.0.0.1 only: the compose file uses host networking, so this stays local-only like run.sh
 CMD ["uvicorn", "app:app", "--host", "127.0.0.1", "--port", "8090"]
