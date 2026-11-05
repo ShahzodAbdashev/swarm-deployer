@@ -54,8 +54,10 @@ const footer = (...kids) => h('div', {class: 'wfoot'}, kids);
 
 /** SFTP server where Build Packager uploads the zips (read-only for Swarm Deployer). Test uses the typed values without saving. */
 function fileServerCard(cfg) {
-  const API_FIELD = {host: 'fs-host', port: 'fs-port', username: 'fs-username', password: 'fs-password', private_key_path: 'fs-key', remote_dir: 'fs-dir'};
+  const API_FIELD = {protocol: 'fs-proto', host: 'fs-host', port: 'fs-port', username: 'fs-username', password: 'fs-password', private_key_path: 'fs-key', remote_dir: 'fs-dir'};
   const f0 = cfg.file_server;
+  const proto = h('select', {class: 'input'}, [['sftp', 'SFTP server'], ['local', 'Folder on this computer']].map(([v, l]) =>
+    h('option', {value: v, selected: v === (f0.protocol || 'sftp') ? true : null}, l)));
   const host = input({placeholder: 'files.example.com', value: f0.host});
   const port = portInput(f0.port, {'aria-label': 'Port'});
   const user = input({placeholder: 'deploy', value: f0.username});
@@ -65,15 +67,19 @@ function fileServerCard(cfg) {
   const res = h('div', {'aria-live': 'polite'});
   const rmPw = h('button', {class: 'link', type: 'button', style: {alignSelf: 'flex-start', fontSize: '13px'}, onclick: () => removePw()}, 'Remove saved password');
   const fill = f => {
-    host.value = f.host; port.value = String(f.port); user.value = f.username; key.value = f.private_key_path; dir.value = f.remote_dir;
+    proto.value = f.protocol || 'sftp'; host.value = f.host; port.value = String(f.port); user.value = f.username; key.value = f.private_key_path; dir.value = f.remote_dir;
     pw.input.value = '';
     pw.input.placeholder = f.has_password ? SAVED : '';
     rmPw.hidden = !f.has_password;
+    mode();
   };
-  fill(f0);
-  const v = () => ({host: host.value.trim(), port: Number(port.value), username: user.value.trim(), private_key_path: key.value.trim(), remote_dir: dir.value.trim()});
+  let sftpRows = [];
+  const mode = () => { const local = proto.value === 'local'; sftpRows.forEach(e => { e.hidden = local; });
+    dir.placeholder = local ? '/home/me/releases' : '/releases'; };
+  const v = () => ({protocol: proto.value, host: host.value.trim(), port: Number(port.value), username: user.value.trim(), private_key_path: key.value.trim(), remote_dir: dir.value.trim()});
   const st = errState(needHost => {
     const x = v();
+    if (x.protocol === 'local') return {'fs-dir': x.remote_dir.startsWith('/') ? null : 'Enter a full folder path, like /home/me/releases.'};
     return {'fs-host': x.host ? hostErr(x.host) : needHost ? 'Enter a host.' : null, 'fs-port': portErr(x.port),
       'fs-username': userErr(x.username, true), 'fs-dir': pathErr(x.remote_dir)};
   });
@@ -117,14 +123,18 @@ function fileServerCard(cfg) {
     } catch (e) { toast(errDetail(e).detail, 'error'); }
   }
 
-  const el = card('file-server', 'File server (SFTP)', 'Where Build Packager uploads the zips. Swarm Deployer only reads from it.',
+  sftpRows = [h('label', {class: 'lbl', for: 'fs-host'}, 'Host and port'),
+    h('div', {class: 'ctl'}, h('div', {class: 'hostport'}, ctlWithErr('fs-host', host), ctlWithErr('fs-port', port))),
+    ...gridRow({id: 'fs-username', label: 'Username'}, user),
+    ...gridRow({id: 'fs-password', label: 'Password', extra: rmPw}, pw),
+    ...gridRow({id: 'fs-key', label: 'Private key', help: 'Optional. Used instead of, or with, the password.'}, key)];
+  proto.addEventListener('change', mode);
+  fill(f0);
+  const el = card('file-server', 'File server', 'Where the zips are: an SFTP server, or a folder on this computer you copy them into. Swarm Deployer only reads from it.',
     h('div', {class: 'form-grid', oninput: () => st.onInput(false)},
-      h('label', {class: 'lbl', for: 'fs-host'}, 'Host and port'),
-      h('div', {class: 'ctl'}, h('div', {class: 'hostport'}, ctlWithErr('fs-host', host), ctlWithErr('fs-port', port))),
-      gridRow({id: 'fs-username', label: 'Username'}, user),
-      gridRow({id: 'fs-password', label: 'Password', extra: rmPw}, pw),
-      gridRow({id: 'fs-key', label: 'Private key', help: 'Optional. Used instead of, or with, the password.'}, key),
-      gridRow({id: 'fs-dir', label: 'Remote folder', help: 'The folder the package list opens in, e.g. /releases.'}, dir)),
+      gridRow({id: 'fs-proto', label: 'Source'}, proto),
+      sftpRows,
+      gridRow({id: 'fs-dir', label: 'Folder', help: 'SFTP: the folder the package list opens in, e.g. /releases. Local: the full path of the folder on this computer.'}, dir)),
     footer(testBtn, h('span', {class: 'spacer'}), saveBtn), res);
   enterSubmits(el, save);
   return el;

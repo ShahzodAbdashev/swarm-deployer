@@ -69,12 +69,13 @@ def test_file_server(body: dict | None = Body(default=None)):
     fs = {**fs0, **over}
     drop_moved_pw(fs, fs0, over)
     fs = check_file_server(fs)
-    if not fs["host"]:
+    if not fs["host"] and fs.get("protocol") != "local":
         bad("host: required")
     try:
         with fileserver(fs) as (ls, _get):
             n = sum(1 for name, is_dir, *_ in ls(fs["remote_dir"]) if not is_dir and parse_pkg(name))
-        return {"ok": True, "message": f"Connected to {fs['host']}:{fs['port']}, {n} packages in {fs['remote_dir']}"}
+        where = "Local folder:" if fs.get("protocol") == "local" else f"Connected to {fs['host']}:{fs['port']},"
+        return {"ok": True, "message": f"{where} {n} packages in {fs['remote_dir']}"}
     except Exception as e:
         return {"ok": False, "message": f"{type(e).__name__}: {e}"}
 

@@ -6,7 +6,7 @@ The deploy side of Build Packager. It runs locally with no sign-in: pick a
 
 `fetch → extract → connect → transfer → backup → load → tag → deploy → verify → cleanup`
 
-1. **fetch**: downloads the zip from the file server over SFTP.
+1. **fetch**: downloads the zip from the file server over SFTP, or copies it from the local folder.
 2. **extract**: unzips the image `.tar` (AES or ZipCrypto) and checks it is a docker archive (`manifest.json`/`RepoTags`).
    It also picks up `.deploy/healthcheck.sh` when the package has it.
 3. **connect**: signs in to the target (a swarm manager) over SSH, logs in to the registry (if any), checks the swarm
@@ -62,7 +62,7 @@ backend/                   FastAPI backend
   utils/                   dates, files (atomic private JSON), text, images (image refs, package names)
   config/store.py          config.json load / locked update / public view
   validators/              fields (v_str, v_int, ...), settings (file server, target, mapping)
-  remote/                  ssh (Shell, host keys, probe), swarm (service queries, overview), fileserver (SFTP)
+  remote/                  ssh (Shell, host keys, probe), swarm (service queries, overview), fileserver (SFTP or local folder)
   gitlab/client.py         GitLab API: CI/CD variables for the project import
   jobs/                    store (job files, busy set), manager (new/start/recover), runner/ (base, package
                            phases, deploy phases, rollback; Runner combines them)
@@ -91,8 +91,8 @@ Syntax check (ES modules): `for f in frontend/js/*.js; do node --input-type=modu
 
 ## Configure (Settings page, or the API)
 
-- **File server**: the SFTP server Build Packager uploads to: host, port, user, password or key, and the remote folder
-  (e.g. `/releases`). The package list refreshes every 5 s in the wizard and marks new zips.
+- **File server**: where the zips are. Either the SFTP server Build Packager uploads to (host, port, user, password or key, and the remote folder), or **Folder on this computer**: a full local path you copy the zips into (e.g. from a Windows server with no SSH/SMB port open). In local mode the package list cannot leave that folder.
+  The package list refreshes every 5 s in the wizard and marks new zips.
 - **Target servers**: the swarm manager's SSH host, port, user, password or key path, and host key policy (`auto_add` is meant for a lab; use `reject` in production with known_hosts). Also the docker command (`docker` or `sudo -n docker`), the work dir and the backup dir. Extra nodes get the image loaded too.
 - **Service mappings**: a package service (`sdtest-web1`) maps to a target, a swarm service (`sdtest_web1`), an image repo (`sdtest/web1`), a moving tag (`latest`), an optional health URL checked from the target, and optionally "create if missing".
 - **Options**: keep N backups, save the image tar by default (on), converge timeout, update monitor, health timeout,
@@ -167,7 +167,7 @@ and errors, **never values**. One `.env` can configure both tools: Build Package
 | `.env` key (native · CI alias) | sets |
 |---|---|
 | `GITLAB_URL`, `GITLAB_TOKEN` | GitLab URL and token for the project import |
-| `FILE_SERVER_HOST` `PORT` `USER` `PASSWORD` `REMOTE_DIR` `KEY_PATH` | SFTP file server |
+| `FILE_SERVER_PROTOCOL` (`sftp` or `local`) `HOST` `PORT` `USER` `PASSWORD` `REMOTE_DIR` `KEY_PATH` | file server |
 | `SD_TARGET_ID` | the target these keys go to (else the import's target, else the only target, else `dev`) |
 | `SD_TARGET_HOST` · `BASE_DEVELOPMENT_HOST` | target host |
 | `SD_TARGET_PORT`, `SD_TARGET_PASSWORD`, `SD_TARGET_KEY_PATH` | target SSH port, password, key path |

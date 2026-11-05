@@ -8,7 +8,7 @@ ROLLBACK_PHASES = [Phase.CONNECT, Phase.BACKUP, Phase.LOAD, Phase.DEPLOY, Phase.
 DONE = (JobStatus.SUCCESS, JobStatus.FAILED)
 ROLLBACK_STATES = tuple(RollbackState)
 DEFAULTS = {
-    "file_server": {"host": "", "port": 22, "username": "", "password": "", "private_key_path": "", "remote_dir": "/"},
+    "file_server": {"protocol": "sftp", "host": "", "port": 22, "username": "", "password": "", "private_key_path": "", "remote_dir": "/"},
     "targets": [],
     "options": {"keep_backups": 5, "save_image_tar": True, "converge_timeout": 120, "update_monitor": 10,
                 "health_timeout": 30, "prune_after": False},

@@ -1,6 +1,6 @@
 """.env key names and the settings they set."""
 ENV_BOOL = {"true": True, "1": True, "yes": True, "on": True, "false": False, "0": False, "no": False, "off": False}
-ENV_FS = {"FILE_SERVER_HOST": "host", "FILE_SERVER_PORT": "port", "FILE_SERVER_USER": "username",
+ENV_FS = {"FILE_SERVER_PROTOCOL": "protocol", "FILE_SERVER_HOST": "host", "FILE_SERVER_PORT": "port", "FILE_SERVER_USER": "username",
           "FILE_SERVER_PASSWORD": "password", "FILE_SERVER_REMOTE_DIR": "remote_dir",
           "FILE_SERVER_KEY_PATH": "private_key_path"}
 ENV_TARGET = {"host": ("SD_TARGET_HOST", "BASE_DEVELOPMENT_HOST"), "port": ("SD_TARGET_PORT",),

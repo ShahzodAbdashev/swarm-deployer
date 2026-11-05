@@ -1,5 +1,6 @@
 """Validation of file server and targets."""
 import copy
+import os
 import re
 
 from backend.core.constants import DOCKER_CMDS, POLICIES, TARGET_DEFAULTS
@@ -9,6 +10,14 @@ from backend.validators.fields import clean_remote_dir, v_host, v_int, v_re, v_s
 
 
 def check_file_server(fs):
+    if fs.get("protocol", "sftp") not in ("sftp", "local"):
+        bad("protocol: sftp or local")
+    if fs.get("protocol") == "local":  # a folder on this computer: only the path matters
+        p = v_str(fs["remote_dir"], "remote_dir", 1024).strip()
+        if not p.startswith("/") or not os.path.isdir(p):
+            bad("remote_dir: an existing folder on this computer, like /home/me/releases")
+        fs["remote_dir"] = os.path.normpath(p)
+        return fs
     fs["host"] = v_str(fs["host"], "host", 253).strip()
     if fs["host"]:
         v_host(fs["host"], "host")
