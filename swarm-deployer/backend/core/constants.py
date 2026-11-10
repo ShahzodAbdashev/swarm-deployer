@@ -8,7 +8,6 @@ ROLLBACK_PHASES = [Phase.CONNECT, Phase.BACKUP, Phase.LOAD, Phase.DEPLOY, Phase.
 DONE = (JobStatus.SUCCESS, JobStatus.FAILED)
 ROLLBACK_STATES = tuple(RollbackState)
 DEFAULTS = {
-    "file_server": {"protocol": "sftp", "host": "", "port": 22, "username": "", "password": "", "private_key_path": "", "remote_dir": "/"},
     "targets": [],
     "options": {"keep_backups": 5, "save_image_tar": True, "converge_timeout": 120, "update_monitor": 10,
                 "health_timeout": 30, "prune_after": False},
@@ -18,7 +17,7 @@ DEFAULTS = {
 SECRET_KEYS = ("password", "token")
 TARGET_DEFAULTS = {"id": "", "name": "", "host": "", "port": 22, "username": "", "password": "",
                    "private_key_path": "", "host_key_policy": KeyPolicy.AUTO_ADD, "docker_cmd": "docker",
-                   "work_dir": "", "backup_dir": "", "extra_nodes": [],
+                   "packages_dir": "", "backup_dir": "", "extra_nodes": [],
                    "registry": {"url": "", "username": "", "password": ""}}
 OPTION_RULES = {"keep_backups": (1, 50), "converge_timeout": (10, 1800), "update_monitor": (1, 600),
                 "health_timeout": (1, 600)}

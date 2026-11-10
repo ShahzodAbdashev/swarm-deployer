@@ -6,7 +6,7 @@ import threading
 import uuid
 from datetime import datetime
 
-from backend.config.store import find, load_config
+from backend.config.store import load_config
 from backend.core.constants import DEPLOY_PHASES, DONE, ROLLBACK_PHASES
 from backend.core.enums import DeployMode, JobKind, JobStatus, Phase, PhaseStatus
 from backend.core.errors import bad
@@ -15,7 +15,7 @@ from backend.core.paths import WORK
 from backend.gitlab.ci_file import deploy_vars
 from backend.jobs.runner import Runner
 from backend.jobs.store import all_jobs, busy, busy_key, busy_lock, job_path, mapping_for
-from backend.remote.fileserver import need_file_server, read_zip_member
+from backend.remote.fileserver import packages_target, read_zip_member
 from backend.remote.ssh import connect_target
 from backend.remote.swarm import service_info
 from backend.utils.dates import now_iso
@@ -94,21 +94,22 @@ def recover_interrupted():
         threading.Thread(target=runner.recover, daemon=True).start()
 
 
-def plan_deploy(cfg, path, pw):
+def plan_deploy(cfg, path, pw, tid=None):
     """Where the package goes, with nothing to pick: SERVICE_NAME / DEV_IMAGE_TAG / HEALTHCHECK_URL from the zip's
     .gitlab-ci.yml (read in place; also checks the password), else the package's last deploy. The target is the
-    last deploy's, else the only one. The image repo comes from what the service runs now. Returns (mapping,
-    target, current image)."""
+    one the package is on (tid, else the only one). The image repo comes from what the service runs now. Returns
+    (mapping, target, current image)."""
     pkg = parse_pkg(posixpath.basename(path))[0]
-    fs = need_file_server(cfg)
+    t = packages_target(cfg, tid)
+    tid = t["id"]
     try:
-        raw = read_zip_member(fs, path, ".gitlab-ci.yml", pw)
+        raw = read_zip_member(t, path, ".gitlab-ci.yml", pw)
     except RuntimeError:
         bad("password: wrong zip password")
     except FileNotFoundError:
-        bad("package_path: not found on the file server", 404)
+        bad(f"package_path: not found on {tid}", 404)
     except Exception as e:
-        bad(f"file server: {type(e).__name__}: {e}", 502)
+        bad(f"target {tid}: {type(e).__name__}: {e}", 502)
     try:
         ci = deploy_vars(raw.decode("utf-8", "replace")) if raw else {}
         if ci.get("tag") and not TAG_RE.fullmatch(ci["tag"]):
@@ -116,15 +117,9 @@ def plan_deploy(cfg, path, pw):
     except ValueError as e:
         bad(f"package: {e}")
     last = mapping_for(cfg, pkg) or {}
-    targets = cfg["targets"]
-    tid = last.get("target") or (targets[0]["id"] if len(targets) == 1 else None)
-    if not tid:
-        bad("target: add a target server in Settings" if not targets else
-            f"target: {len(targets)} target servers and {pkg} was never deployed: keep one target")
     svc = ci.get("service") or last.get("swarm_service")
     if not svc:
         bad(f"package: no SERVICE_NAME — the zip has no .gitlab-ci.yml with it and {pkg} was never deployed")
-    t = find(targets, "id", tid)
     try:
         sh = connect_target(t)
     except Exception as e:
@@ -147,11 +142,11 @@ def plan_deploy(cfg, path, pw):
     return m, t, strip_digest(img)
 
 
-def start_deploy(path, pw, sit=None):
-    """path: validated /dir/<package file> on the file server (parse_pkg accepts its name)."""
+def start_deploy(path, pw, sit=None, tid=None):
+    """path: validated /dir/<package file> on the target (parse_pkg accepts its name)."""
     svc, ver, fmt = parse_pkg(posixpath.basename(path))
     cfg = load_config()
-    m, t, _img = plan_deploy(cfg, path, pw)
+    m, t, _img = plan_deploy(cfg, path, pw, tid)
     job = new_job(JobKind.DEPLOY, cfg, m, t, package=svc, package_path=path, version=ver, ci_tag=m["ci_tag"],
                   new_image=f"{m['image_repo']}:{ver}" if ver else None, package_format=fmt,
                   save_image_tar=cfg["options"]["save_image_tar"] if sit is None else sit)

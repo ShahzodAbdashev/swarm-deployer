@@ -6,25 +6,18 @@ import {api, fmtDur, fmtRel, go, h, parseT, sget, sset, statusIcon, statusText} 
 const enc = encodeURIComponent;
 export const API = {
   config: () => api('GET', '/api/config'),
-  putFileServer: b => api('PUT', '/api/config/file-server', b),
-  testFileServer: b => api('POST', '/api/config/file-server/test', b),
-  putOptions: b => api('PUT', '/api/config/options', b),
-  putGitlab: b => api('PUT', '/api/config/gitlab', b),
-  importEnv: (content, target_id) => api('POST', '/api/config/import-env', target_id ? {content, target_id} : {content}),
-  importGitlab: (project, target_id) => api('POST', '/api/config/import-gitlab', target_id ? {project, target_id} : {project}),
-  gitlabProjects: () => api('GET', '/api/gitlab/projects'),
   createTarget: b => api('POST', '/api/targets', b),
   updateTarget: (id, b) => api('PUT', '/api/targets/' + enc(id), b),
   removeTarget: id => api('DELETE', '/api/targets/' + enc(id)),
   testTarget: id => api('POST', '/api/targets/' + enc(id) + '/test'),
-  packages: path => api('GET', '/api/packages?path=' + enc(path)),
+  packages: (path, target) => api('GET', '/api/packages?path=' + enc(path) + '&target=' + enc(target)),
   services: () => api('GET', '/api/services'),
   service: pkg => api('GET', '/api/services/' + enc(pkg)),
   backups: pkg => api('GET', '/api/services/' + enc(pkg) + '/backups'),
   deploys: pkg => api('GET', pkg ? '/api/deploys?package=' + enc(pkg) : '/api/deploys'),
   deploy: id => api('GET', '/api/deploys/' + id),
   createDeploy: b => api('POST', '/api/deploys', b),
-  plan: (package_path, password) => api('POST', '/api/deploys/plan', {package_path, password}),
+  plan: (package_path, password, target) => api('POST', '/api/deploys/plan', {package_path, password, target}),
   removeDeploy: id => api('DELETE', '/api/deploys/' + id),
   rollback: (pkg, backupId) => api('POST', '/api/rollbacks', {package: pkg, backup_id: backupId}),
   logUrl: id => '/api/deploys/' + id + '/log',
@@ -70,7 +63,7 @@ const PLABEL = {
 export const plabel = (name, job) => (name === 'tag' && job?.registry ? 'Tag and push image' : PLABEL[name] || name);
 
 const PHINT = {
-  fetch: 'Check the file server in Settings and that the file still exists.',
+  fetch: "Check the target's packages folder in Settings and that the file still exists.",
   extract: 'Check the zip password. The package must come from Build Packager.',
   connect: 'Test the target in Settings. It must be a swarm manager.',
   transfer: 'Check free disk space in the work dir on the target.',
@@ -152,9 +145,11 @@ export const RX = {
   tid: /^[a-z0-9][a-z0-9-]{0,31}$/,
   reg: /^[A-Za-z0-9][A-Za-z0-9.-]*(:\d{1,5})?$/,
 };
+/** Targets with a packages folder: where packages can be picked from. */
+export const pkgTargets = cfg => cfg.targets.filter(t => t.packages_dir);
 export function pathErr(v) {
   if (!v) return 'Path is required.';
-  if (!v.startsWith('/')) return 'Use a full path starting with /, e.g. /home/deploy/sd-work.';
+  if (!v.startsWith('/')) return 'Use a full path starting with /, e.g. /home/deploy/releases.';
   if (v.split('/').includes('..') || /[\x00-\x1f\x7f]/.test(v)) return 'This path is not allowed.';
   if (v.length > 1024) return 'Max 1024 characters.';
   return null;
@@ -168,18 +163,18 @@ export const detailField = (detail, resolve) => resolve(String(detail || '').spl
 
 // ------------------------------------------------------------------ wizard draft + per-tab session flags
 
-/** package_path / package / path go to sessionStorage['sd.draft']; the zip password lives in memory only (SPEC §8). */
+/** package_path / package / path / target go to sessionStorage['sd.draft']; the zip password lives in memory only (SPEC §8). */
 const DKEY = 'sd.draft';
-const empty = () => ({package_path: '', package: '', path: '', password: ''});
+const empty = () => ({package_path: '', package: '', path: '', target: '', password: ''});
 export const draft = empty();
 try {
   const v = JSON.parse(sget(DKEY) || 'null');
-  if (v && typeof v === 'object') for (const k of ['package_path', 'package', 'path']) draft[k] = String(v[k] || '');
+  if (v && typeof v === 'object') for (const k of ['package_path', 'package', 'path', 'target']) draft[k] = String(v[k] || '');
 } catch { /* corrupt draft: start fresh */ }
 
 export function updateDraft(p) {
   Object.assign(draft, p);
-  sset(DKEY, JSON.stringify({package_path: draft.package_path, package: draft.package, path: draft.path}));
+  sset(DKEY, JSON.stringify({package_path: draft.package_path, package: draft.package, path: draft.path, target: draft.target}));
 }
 
 /** In-memory, per-tab flags that outlive one page. Never persisted. */

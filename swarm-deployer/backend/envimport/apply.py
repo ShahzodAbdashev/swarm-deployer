@@ -10,12 +10,12 @@ from backend.core.constants import OPTION_RULES
 from backend.core.errors import bad
 from backend.core.paths import BASE, KEYS
 from backend.core.patterns import TID_RE
-from backend.envimport.keys import ENV_FS, ENV_KEY, ENV_KEYS, ENV_OPT_BOOL, ENV_OPT_INT, ENV_REGISTRY, ENV_TARGET
+from backend.envimport.keys import ENV_KEY, ENV_KEYS, ENV_OPT_BOOL, ENV_OPT_INT, ENV_REGISTRY, ENV_TARGET
 from backend.envimport.parser import env_bool, env_int, parse_env
 from backend.gitlab.client import gl_base
 from backend.utils.dates import now_iso
 from backend.validators.fields import v_gl_url, v_int, v_str
-from backend.validators.settings import check_file_server, check_target, drop_moved_pw
+from backend.validators.settings import check_target
 
 
 def write_key(tid, text):
@@ -76,18 +76,6 @@ def apply_env(kv, target_id=None, project=None, source=".env"):
     if any(k.startswith("GITLAB_") for k in E):
         section("gitlab", s_gitlab)
 
-    def s_fs(cfg):
-        fs, out = dict(cfg["file_server"]), []
-        for k, f in ENV_FS.items():
-            if k in E:
-                fs[f] = env_int(E[k], k) if f == "port" else E[k]
-                out.append(f"file_server.{f}")
-        drop_moved_pw(fs, cfg["file_server"], {"password": 1} if "FILE_SERVER_PASSWORD" in E else {})
-        cfg["file_server"] = check_file_server(fs)
-        return out
-    if any(k in E for k in ENV_FS):
-        section("file_server", s_fs)
-
     cfg0 = load_config()
     tid = g("SD_TARGET_ID") or target_id or (cfg0["targets"][0]["id"] if len(cfg0["targets"]) == 1 else "dev")
     tfields = {f: g(*ks) for f, ks in ENV_TARGET.items() if g(*ks) is not None}
@@ -116,7 +104,6 @@ def apply_env(kv, target_id=None, project=None, source=".env"):
                 if not (body.get("host") and body.get("username")):
                     bad(f"target {tid} does not exist; SD_TARGET_HOST and SD_TARGET_USER are needed to create it")
                 home = "/root" if body["username"] == "root" else f"/home/{body['username']}"
-                body.setdefault("work_dir", f"{home}/sd-work")
                 body.setdefault("backup_dir", f"{home}/sd-backups")
             t = check_target(body, old)
             if key is not None:
@@ -134,7 +121,6 @@ def apply_env(kv, target_id=None, project=None, source=".env"):
                 cfg["targets"].append(t)
             return list(dict.fromkeys(out))
         section("target", s_target)
-
 
     def s_options(cfg):
         out = []

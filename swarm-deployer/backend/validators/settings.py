@@ -1,34 +1,11 @@
-"""Validation of file server and targets."""
+"""Validation of targets."""
 import copy
-import os
 import re
 
 from backend.core.constants import DOCKER_CMDS, POLICIES, TARGET_DEFAULTS
 from backend.core.errors import bad
 from backend.core.patterns import REG_URL_RE, REG_USER_RE, TID_RE, USER_RE
 from backend.validators.fields import clean_remote_dir, v_host, v_int, v_re, v_str
-
-
-def check_file_server(fs):
-    if fs.get("protocol", "sftp") not in ("sftp", "local"):
-        bad("protocol: sftp or local")
-    if fs.get("protocol") == "local":  # a folder on this computer: only the path matters
-        p = v_str(fs["remote_dir"], "remote_dir", 1024).strip()
-        if not p.startswith("/") or not os.path.isdir(p):
-            bad("remote_dir: an existing folder on this computer, like /home/me/releases")
-        fs["remote_dir"] = os.path.normpath(p)
-        return fs
-    fs["host"] = v_str(fs["host"], "host", 253).strip()
-    if fs["host"]:
-        v_host(fs["host"], "host")
-    v_int(fs["port"], "port", 1, 65535)
-    v_str(fs["username"], "username", 64)
-    if fs["username"]:
-        v_re(fs["username"], "username", USER_RE)
-    v_str(fs["password"], "password")
-    v_str(fs["private_key_path"], "private_key_path")
-    fs["remote_dir"] = clean_remote_dir(fs["remote_dir"])
-    return fs
 
 
 def check_ssh_part(t, field):
@@ -75,7 +52,9 @@ def check_target(body, old=None):
     v_re(t["host_key_policy"], "host_key_policy", re.compile("|".join(POLICIES)), "must be auto_add, warn or reject")
     if t["docker_cmd"] not in DOCKER_CMDS:
         bad('docker_cmd: must be "docker" or "sudo -n docker"')
-    t["work_dir"] = clean_remote_dir(t["work_dir"], "work_dir")
+    t.pop("work_dir", None)  # old setting: job files now go to <backup_dir>/.work
+    if t["packages_dir"]:  # may stay empty until set (e.g. a target made by an .env import)
+        t["packages_dir"] = clean_remote_dir(t["packages_dir"], "packages_dir")
     t["backup_dir"] = clean_remote_dir(t["backup_dir"], "backup_dir")
     if "extra_nodes" in body:
         if not isinstance(body["extra_nodes"], list):

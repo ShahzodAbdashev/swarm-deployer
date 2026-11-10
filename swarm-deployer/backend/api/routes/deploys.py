@@ -18,7 +18,6 @@ from backend.core.paths import WORK
 from backend.core.patterns import BACKUP_ID_RE, TS_RE
 from backend.jobs.manager import new_job, plan_deploy, start_deploy, start_job
 from backend.jobs.store import all_jobs, job_path, load_job
-from backend.remote.fileserver import need_file_server
 from backend.remote.swarm import need_mapping
 from backend.utils.images import parse_pkg, registry_mode
 from backend.validators.fields import clean_remote_dir, v_bool, v_re, v_str
@@ -30,12 +29,13 @@ router = APIRouter()
 def create_deploy(body: dict = Body(default={})):
     body = obj(body)
     path = body.get("package_path")
+    tid = body.get("target")
     um = re.fullmatch(r"sftp://([^/:]+)(?::(\d+))?(/.*)", path.strip()) if isinstance(path, str) else None
-    if um:  # Build Packager reports artifacts.remote_path as a URL; accept it for our own file server
-        fs = need_file_server(load_config())
-        if (um[1], int(um[2] or fs["port"])) != (fs["host"], fs["port"]):
-            bad("package_path: URL does not match the configured file server")
-        path = um[3]
+    if um:  # Build Packager reports artifacts.remote_path as a URL: the host names the target
+        t = next((t for t in load_config()["targets"] if (t["host"], int(t["port"])) == (um[1], int(um[2] or 22))), None)
+        if not t:
+            bad("package_path: URL does not match any target server")
+        path, tid = um[3], t["id"]
     path = clean_remote_dir(path, "package_path")
     if not parse_pkg(posixpath.basename(path)):
         bad("package_path: file name must be <service>_<YYYYMMDD_HHMMSS>.zip, <name>.tar.zip or <name>.zip")
@@ -45,7 +45,7 @@ def create_deploy(body: dict = Body(default={})):
     sit = body.get("save_image_tar")
     if sit is not None:
         v_bool(sit, "save_image_tar")
-    return start_deploy(path, pw, sit)
+    return start_deploy(path, pw, sit, tid)
 
 
 @router.post("/api/deploys/plan")
@@ -58,7 +58,7 @@ def plan(body: dict = Body(default={})):
     pw = body.get("password")
     if not isinstance(pw, str) or not 1 <= len(pw) <= 1024:
         bad("password: required (max 1024 characters)")
-    m, t, img = plan_deploy(load_config(), path, pw)
+    m, t, img = plan_deploy(load_config(), path, pw, body.get("target"))
     return {**m, "target_name": t.get("name") or t["id"], "registry": registry_mode(t, m["image_repo"]) and t["registry"]["url"],
             "current_image": img}
 

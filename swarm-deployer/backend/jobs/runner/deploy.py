@@ -73,7 +73,7 @@ class DeployPhases:
                      f"{j['image_repo']}; the image is only loaded on the connected hosts (set the registry in "
                      f"Settings → Targets)")
         if j["kind"] == JobKind.DEPLOY:
-            jd = posixpath.join(t["work_dir"], j["package"], j["version"])
+            jd = posixpath.join(t["backup_dir"], ".work", j["package"], j["version"])
             j["artifacts"]["job_dir"] = jd  # set before mkdir: cleanup removes whatever got created
             self.save()
             self.sh.check(["mkdir", "-p", "--", jd])

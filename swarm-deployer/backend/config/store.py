@@ -4,7 +4,7 @@ import json
 import os
 import threading
 
-from backend.core.constants import DEFAULTS, SECRET_KEYS
+from backend.core.constants import DEFAULTS, SECRET_KEYS, TARGET_DEFAULTS
 from backend.core.paths import CONFIG
 from backend.utils.files import write_json
 
@@ -17,10 +17,11 @@ def load_config():
     try:
         with open(CONFIG) as f:
             disk = json.load(f)
-        for k in ("file_server", "options", "gitlab", "env_import"):  # known keys only: drops removed settings
+        for k in ("options", "gitlab", "env_import"):  # known keys only: drops removed settings
             cfg[k].update({f: v for f, v in (disk.get(k) or {}).items() if f in DEFAULTS[k]})
         cfg["targets"] = disk.get("targets") or []
-        for t in cfg["targets"]:  # targets saved before registries existed
+        for i, t in enumerate(cfg["targets"]):  # targets saved before a field existed (registry, packages_dir)
+            t = cfg["targets"][i] = {**copy.deepcopy(TARGET_DEFAULTS), **t}
             t["registry"] = {"url": "", "username": "", "password": "", **(t.get("registry") or {})}
     except (OSError, ValueError):
         pass

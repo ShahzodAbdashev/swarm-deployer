@@ -1,16 +1,16 @@
 # Swarm Deployer
 
 The deploy side of Build Packager. It runs locally with no sign-in: pick a
-`<service>_<YYYYMMDD_HHMMSS>.zip` that Build Packager uploaded to the SFTP file server (or a `build_tar.sh` zip
+`<service>_<YYYYMMDD_HHMMSS>.zip` from the target server's packages folder (or a `build_tar.sh` zip
 `<name>.tar.zip` / `<name>.zip`), type its zip password, and it runs these phases with a live log:
 
 `fetch → extract → connect → transfer → backup → load → tag → deploy → verify → cleanup`
 
-1. **fetch**: downloads the zip from the file server over SFTP, or copies it from the local folder.
+1. **fetch**: downloads the zip from the target's packages folder over its SSH login.
 2. **extract**: unzips the image `.tar` (AES or ZipCrypto) and checks it is a docker archive (`manifest.json`/`RepoTags`).
    It also picks up `.deploy/healthcheck.sh` when the package has it.
 3. **connect**: signs in to the target (a swarm manager) over SSH, logs in to the registry (if any), checks the swarm
-   service exists, and creates the job folder `<work_dir>/<package>/<version>/`.
+   service exists, and creates the job folder `<backup_dir>/.work/<package>/<version>/`.
 4. **transfer**: uploads the tar (and the health script) into that folder over SFTP and checks its sha256.
 5. **backup**: creates `<backup_dir>/<swarm service>/<ts>/` with `service.json`, `image.txt` (image ref + digest),
    `meta.json` and (by default) the `docker save` tar of the running image; tags it `<repo>:backup-<ts>` (pushed with
@@ -61,8 +61,8 @@ backend/                   FastAPI backend
                            limits), patterns (validation regexes), errors (Fail, Skip, bad -> HTTP 400)
   utils/                   dates, files (atomic private JSON), text, images (image refs, package names)
   config/store.py          config.json load / locked update / public view
-  validators/              fields (v_str, v_int, ...), settings (file server, target, mapping)
-  remote/                  ssh (Shell, host keys, probe), swarm (service queries, overview), fileserver (SFTP or local folder)
+  validators/              fields (v_str, v_int, ...), settings (target, mapping)
+  remote/                  ssh (Shell, host keys, probe), swarm (service queries, overview), fileserver (the target's packages folder)
   gitlab/client.py         GitLab API: CI/CD variables for the project import
   jobs/                    store (job files, busy set), manager (new/start/recover), runner/ (base, package
                            phases, deploy phases, rollback; Runner combines them)
@@ -77,7 +77,7 @@ frontend/                  static UI: hand-written HTML, CSS and browser-native 
   js/wizard.js             New deploy: package -> password -> review
   js/run.js                deploy/rollback: pipeline, result card, live log (SSE)
   js/service.js            running now, backups + rollback, history
-  js/settings.js           file server, targets, options, GitLab, import cards
+  js/settings.js           targets, options, GitLab, import cards
 ```
 
 ## Develop
@@ -91,9 +91,8 @@ Syntax check (ES modules): `for f in frontend/js/*.js; do node --input-type=modu
 
 ## Configure (Settings page, or the API)
 
-- **File server**: where the zips are. Either the SFTP server Build Packager uploads to (host, port, user, password or key, and the remote folder), or **Folder on this computer**: a full local path you copy the zips into (e.g. from a Windows server with no SSH/SMB port open). In local mode the package list cannot leave that folder.
-  The package list refreshes every 5 s in the wizard and marks new zips.
-- **Target servers**: the swarm manager's SSH host, port, user, password or key path, and host key policy (`auto_add` is meant for a lab; use `reject` in production with known_hosts). Also the docker command (`docker` or `sudo -n docker`), the work dir and the backup dir. Extra nodes get the image loaded too.
+The package list refreshes every 5 s in the wizard and marks new zips.
+- **Target servers**: the swarm manager's SSH host, port, user, password or key path, and host key policy (`auto_add` is meant for a lab; use `reject` in production with known_hosts). Also the docker command (`docker` or `sudo -n docker`) and two **full paths** on that server: the **packages folder** (where the new image zips arrive; the wizard lists it) and the **backup folder** (backups, plus `.work/` for a deploy's temporary tar). With several targets the wizard asks which one; the package deploys to the target it is on. Extra nodes get the image loaded too.
 - **Service mappings**: a package service (`sdtest-web1`) maps to a target, a swarm service (`sdtest_web1`), an image repo (`sdtest/web1`), a moving tag (`latest`), an optional health URL checked from the target, and optionally "create if missing".
 - **Options**: keep N backups, save the image tar by default (on), converge timeout, update monitor, health timeout,
   and `prune_after` (below).
@@ -117,7 +116,7 @@ other mappings on that target keep loading the tar on each node. With a registry
 Restart recovery does the same. Prune never deletes tags in the registry, only local backup dirs and tags.
 
 The registry needs a user **and** a password (a registry without auth is not supported). A saved password belongs to
-its host: changing the registry URL (or a target's / the file server's host) without entering the password again
+its host: changing the registry URL (or a target's host) without entering the password again
 clears it, so an old password is never sent to a new host.
 
 ### Moving tag `@current`
@@ -167,13 +166,12 @@ and errors, **never values**. One `.env` can configure both tools: Build Package
 | `.env` key (native · CI alias) | sets |
 |---|---|
 | `GITLAB_URL`, `GITLAB_TOKEN` | GitLab URL and token for the project import |
-| `FILE_SERVER_PROTOCOL` (`sftp` or `local`) `HOST` `PORT` `USER` `PASSWORD` `REMOTE_DIR` `KEY_PATH` | file server |
 | `SD_TARGET_ID` | the target these keys go to (else the import's target, else the only target, else `dev`) |
 | `SD_TARGET_HOST` · `BASE_DEVELOPMENT_HOST` | target host |
 | `SD_TARGET_PORT`, `SD_TARGET_PASSWORD`, `SD_TARGET_KEY_PATH` | target SSH port, password, key path |
 | `SD_TARGET_USER` · `BASE_DEVELOPMENT_HOST_USER` | target SSH user |
 | `SD_TARGET_SSH_KEY` · `BASE_DEVELOPMENT_SSH_PRIVATE_KEY` | key **content**, written to `data/keys/<target>` (mode 600) and used as the key path |
-| `SD_WORK_DIR`, `SD_BACKUP_DIR` | job and backup folders (new targets default to `/home/<user>/sd-work`, `/home/<user>/sd-backups`) |
+| `SD_PACKAGES_DIR`, `SD_BACKUP_DIR` | packages and backup folders, full paths (a new target's backup folder defaults to `/home/<user>/sd-backups`) |
 | `SD_DOCKER_CMD`, `SD_HOST_KEY_POLICY` | `docker` or `sudo -n docker`; `auto_add`/`warn`/`reject` |
 | `SD_REGISTRY` · `CI_REGISTRY`, `SD_REGISTRY_USER` · `CI_REGISTRY_USER`, `SD_REGISTRY_PASSWORD` · `CI_REGISTRY_PASSWORD` | target registry |
 | `SD_PACKAGE` | mapping package name; default: the last path segment of the image repo (`…/fortress/ownercheck` → `ownercheck`), else of the GitLab project, else `SERVICE_NAME` |
@@ -199,7 +197,7 @@ curl -X POST http://127.0.0.1:8095/api/rollbacks -H 'Content-Type: application/j
   -d '{"package": "sdtest-web1", "backup_id": "sdtest_web1_20261102_190500"}'
 ```
 
-`package_path` may also be Build Packager's `remote_path` URL (`sftp://host:port/<dir>/<file>`).
+Pass `"target": "<id>"` when there are several targets. `package_path` may also be an `sftp://host:port/<dir>/<file>` URL; its host picks the target.
 The full API is in `SPEC.md` §4 and §11.
 
 ## Lab and tests

@@ -1,7 +1,7 @@
 // New deploy wizard: Package → Password → Review. Steps replace each other in history, so browser Back leaves the wizard.
 import {$, alertBox, announce, btn, confirm, errDetail, field, fmtRel, fmtSize, go, h, icon, isDialogOpen, isMenuOpen, keepFocus, live, on, onLeave,
   put, pwInput, setBusy, setErr, setGuard, skeleton, skeletonRows, sset, toast} from './ui.js';
-import {API, basename, draft, draftDirty, draftFormat, draftVersion, fmtTs, joinPath, movingText, resetDraft, session, setTitle,
+import {API, basename, pkgTargets, draft, draftDirty, draftFormat, draftVersion, fmtTs, joinPath, movingText, resetDraft, session, setTitle,
   updateDraft} from './app.js';
 
 export const WSTEPS = ['package', 'password', 'review'];
@@ -97,15 +97,15 @@ export function wizardPage(main, {step}) {
 
 const pkey = p => p.path + '|' + (p.modified_at || '') + '|' + p.size;
 const clock = () => new Date().toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'});
-const toSettings = () => { sset('sd.return', '#/new/package'); go('#/settings/file-server'); };
+const toSettings = () => { sset('sd.return', '#/new/package'); go('#/settings/targets'); };
 
 /**
- * Browse the file server folder and pick a package, grouped by service, newest first.
+ * Browse the target's packages folder and pick a package, grouped by service, newest first.
  * The listing refreshes every 5 s (watch): files that show up later are marked New (or Uploading… while their size changes).
  */
 function packageStep({goNext}) {
   const ok = live();
-  let fs = null, cur = '', data = null, seq = 0, focusOnData = true;
+  let fs = null, cur = '', data = null, seq = 0, focusOnData = true; // fs: the target the packages are on
   let seen = null, fresh = new Set(), lastSize = new Map(), uploading = new Set();
   const sub = h('div', {class: 'sub'}, skeleton('240px', 14));
   const crumbs = h('nav', {class: 'crumbs', 'aria-label': 'Folder'});
@@ -142,13 +142,13 @@ function packageStep({goNext}) {
     }
     if (seen === null) { fresh = new Set(); lastSize = new Map(); }
     let d;
-    try { d = await API.packages(path); } catch (e) {
+    try { d = await API.packages(path, fs.id); } catch (e) {
       if (my !== seq || !ok()) return;
       if (quiet) setLive(false);
       else {
-        put(list, alertBox('error', [h('span', null, "Couldn't list the file server. " + errDetail(e).detail),
+        put(list, alertBox('error', [h('span', null, "Couldn't list the packages folder. " + errDetail(e).detail),
           h('div', {class: 'row-flex', style: {flexWrap: 'wrap'}}, btn('ghost', 'Retry', () => load(cur)),
-            h('button', {class: 'link', type: 'button', onclick: toSettings}, 'File server settings'))]));
+            h('button', {class: 'link', type: 'button', onclick: toSettings}, 'Target settings'))]));
       }
       return;
     }
@@ -156,7 +156,7 @@ function packageStep({goNext}) {
     watch(d);
     if (!quiet) { cur = d.path || path; updateDraft({path: cur}); }
     data = d;
-    put(sub, 'Packages on ', h('span', {class: 'mono'}, 'sftp://' + fs.host + cur));
+    put(sub, 'Packages on ', h('span', {class: 'mono'}, (fs.name || fs.id) + ':' + cur));
     renderCrumbs();
     renderBody();
     setLive(true);
@@ -212,16 +212,27 @@ function packageStep({goNext}) {
 
   API.config().then(cfg => {
     if (!ok()) return;
-    const f = cfg.file_server;
-    if (!f || !f.host) {
-      put(sub, 'No file server is set up.');
-      put(list, alertBox('warning', [h('b', null, 'Connect the file server first'),
-        h('span', null, 'Swarm Deployer downloads packages from the server Build Packager uploads to.'),
-        h('div', null, btn('secondary', 'Set up the file server', toSettings))], 'alert'));
+    const ts = pkgTargets(cfg);
+    if (!ts.length) {
+      put(sub, 'No packages folder is set up.');
+      put(list, alertBox('warning', [h('b', null, 'Set the packages folder first'),
+        h('span', null, 'Full path on the target server where the new image zips arrive.'),
+        h('div', null, btn('secondary', 'Target settings', toSettings))], 'alert'));
       return;
     }
-    fs = f;
-    load(draft.path || f.remote_dir || '/');
+    const use = (t, path) => {
+      fs = t;
+      if (draft.target !== t.id) updateDraft({target: t.id, package_path: '', package: '', path: ''});
+      load(path || t.packages_dir);
+    };
+    if (ts.length > 1) { // several targets: pick whose packages folder to browse (the deploy goes there too)
+      const sel = h('select', {class: 'input', 'aria-label': 'Target server', style: {width: 'auto'}},
+        ts.map(t => h('option', {value: t.id, selected: t.id === draft.target ? true : null}, t.name || t.id)));
+      sel.addEventListener('change', () => use(ts.find(t => t.id === sel.value)));
+      crumbs.before(sel);
+    }
+    const t0 = ts.find(t => t.id === draft.target) || ts[0];
+    use(t0, draft.target === t0.id ? draft.path : '');
   }).catch(e => { if (ok()) put(list, alertBox('error', h('span', null, "Couldn't load settings. " + errDetail(e).detail))); });
 
   const t = setInterval(() => { if (!document.hidden && fs && data) load(cur, true); }, 5000);
@@ -311,7 +322,7 @@ function reviewStep({next, setFormAlert}) {
   if (session.saveTar === null) {
     API.config().then(c => { session.saveTar = !!c.options?.save_image_tar; if (ok()) { cb.checked = session.saveTar; render(); } }).catch(() => {});
   }
-  API.plan(draft.package_path, draft.password).then(p => { if (ok()) { plan = p; render(); } }).catch(e => {
+  API.plan(draft.package_path, draft.password, draft.target).then(p => { if (ok()) { plan = p; render(); } }).catch(e => {
     if (!ok()) return;
     const {status, detail} = errDetail(e);
     if (status === 400 && /^password:/.test(detail)) toPassword(detail);
@@ -320,7 +331,7 @@ function reviewStep({next, setFormAlert}) {
 
   async function submit() {
     setFormAlert(null);
-    const body = {package_path: draft.package_path, password: draft.password, save_image_tar: session.saveTar};
+    const body = {package_path: draft.package_path, password: draft.password, target: draft.target, save_image_tar: session.saveTar};
     setBusy(next, 'Starting…');
     let job;
     try { job = await API.createDeploy(body); } catch (e) {

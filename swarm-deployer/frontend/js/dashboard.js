@@ -1,9 +1,9 @@
 // Deployments: setup checklist until configured; then stat tiles, services (live from targets) and recent deploys.
 import {alertBox, btn, errDetail, fmtDur, fmtRel, go, h, icon, isDialogOpen, isMenuOpen, keepFocus, live, menuButton, on, onLeave, put, refresh, retryAlert,
   skeleton, skeletonRows, statusIcon, statusText, toast} from './ui.js';
-import {API, focusH1, jobActive, jobDur, jobRow, session, setTitle, startWizard, tagOf} from './app.js';
+import {API, focusH1, pkgTargets, jobActive, jobDur, jobRow, session, setTitle, startWizard, tagOf} from './app.js';
 
-const ready = c => !!(c.file_server && c.file_server.host) && c.targets.length > 0;
+const ready = c => pkgTargets(c).length > 0;
 const tileSkeletons = () => h('div', {class: 'tiles'},
   [0, 1, 2, 3].map(i => h('div', {class: 'tile' + (i === 3 ? ' lastt' : '')}, skeleton('60%', 12), skeleton('40%', 24))));
 
@@ -30,19 +30,17 @@ export function dashboardPage(main) {
   }).catch(e => { if (ok()) put(body, retryAlert("Couldn't load settings. " + errDetail(e).detail, refresh)); });
 }
 
-/** First start: the two things to set up before the first deploy, each linking to its Settings section. */
+/** First start: the one thing to set up before the first deploy, the target server (SSH + packages and backup folders). */
 function setupChecklist(cfg) {
   const items = [
-    [!!(cfg.file_server && cfg.file_server.host), 'Connect the file server', 'Where Build Packager uploads the zips.', 'file-server'],
-    [cfg.targets.length > 0, 'Add a target server', 'The swarm manager Swarm Deployer signs in to over SSH.', 'targets'],
+    [pkgTargets(cfg).length > 0, 'Add the target server', 'SSH login, plus full paths for the packages folder and the backup folder.', 'targets'],
   ];
   return h('section', {class: 'card setup', 'aria-labelledby': 'setup-h'},
     h('div', {class: 'card-head'}, h('h2', {id: 'setup-h'}, 'Get ready to deploy')),
     h('div', {class: 'list'}, items.map(([done, title, text, sec], i) => h('div', {class: 'lrow'},
       h('span', {class: 'num' + (done ? ' ok' : ''), 'aria-hidden': 'true'}, done ? icon('check') : String(i + 1)),
       h('div', {class: 'main'}, h('span', {style: {fontWeight: 500}}, title), h('span', {class: 'meta'}, text)),
-      done ? h('span', {class: 'success micro'}, 'Done') : h('a', {class: 'btn secondary', href: '#/settings/' + sec}, 'Set up')))),
-    h('p', {class: 'meta', style: {margin: 'var(--s3) var(--s4) 0'}}, h('a', {class: 'link', href: '#/settings/import'}, 'or import a .env')));
+      done ? h('span', {class: 'success micro'}, 'Done') : h('a', {class: 'btn secondary', href: '#/settings/' + sec}, 'Set up')))));
 }
 
 /** One deployed service: last deploy status, package → service @ target, running version, live state line, actions. */

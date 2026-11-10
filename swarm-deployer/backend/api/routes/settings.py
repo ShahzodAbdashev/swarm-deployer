@@ -1,15 +1,12 @@
-"""Settings: GitLab (for project import), file server, options."""
+"""Settings: GitLab (for project import), options."""
 from fastapi import APIRouter, Body
 
 from backend.api.deps import obj
 from backend.config.store import load_config, public, update_config
-from backend.core.constants import DEFAULTS, OPTION_RULES
+from backend.core.constants import OPTION_RULES
 from backend.core.errors import bad
 from backend.gitlab.client import gl_base, gl_get
-from backend.remote.fileserver import fileserver
-from backend.utils.images import parse_pkg
 from backend.validators.fields import v_bool, v_gl_url, v_int, v_str
-from backend.validators.settings import check_file_server, drop_moved_pw
 
 router = APIRouter()
 
@@ -48,36 +45,6 @@ def gitlab_projects():
     return [{"full_name": p["path_with_namespace"], "clone_url": f"{base}/{p['path_with_namespace']}.git",
              "default_branch": p.get("default_branch"), "private": p.get("visibility") != "public"}
             for p in js if isinstance(p, dict) and p.get("path_with_namespace")]
-
-
-@router.put("/api/config/file-server")
-def put_file_server(body: dict = Body(default={})):
-    def apply(cfg):
-        fs = {**cfg["file_server"], **{k: v for k, v in obj(body).items() if k in DEFAULTS["file_server"]}}
-        drop_moved_pw(fs, cfg["file_server"], obj(body))
-        cfg["file_server"] = check_file_server(fs)
-        return public(fs)
-    return update_config(apply)
-
-
-@router.post("/api/config/file-server/test")
-def test_file_server(body: dict | None = Body(default=None)):
-    over = {k: v for k, v in obj(body).items() if k in DEFAULTS["file_server"]}
-    if not over.get("password"):
-        over.pop("password", None)
-    fs0 = load_config()["file_server"]
-    fs = {**fs0, **over}
-    drop_moved_pw(fs, fs0, over)
-    fs = check_file_server(fs)
-    if not fs["host"] and fs.get("protocol") != "local":
-        bad("host: required")
-    try:
-        with fileserver(fs) as (ls, _get):
-            n = sum(1 for name, is_dir, *_ in ls(fs["remote_dir"]) if not is_dir and parse_pkg(name))
-        where = "Local folder:" if fs.get("protocol") == "local" else f"Connected to {fs['host']}:{fs['port']},"
-        return {"ok": True, "message": f"{where} {n} packages in {fs['remote_dir']}"}
-    except Exception as e:
-        return {"ok": False, "message": f"{type(e).__name__}: {e}"}
 
 
 @router.put("/api/config/options")

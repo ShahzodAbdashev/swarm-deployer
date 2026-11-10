@@ -25,7 +25,7 @@ class RunnerBase:
             raise KeyError(f"target {job['target']} no longer configured")
         self.opt = cfg["options"]
         self.secret = {"password": password}
-        self.masks = [s for s in [password, cfg["file_server"]["password"], cfg["gitlab"]["token"],
+        self.masks = [s for s in [password, cfg["gitlab"]["token"],
                                   *[x for t in cfg["targets"] for x in
                                     [t["password"], (t.get("registry") or {}).get("password"),
                                      *[n.get("password") for n in t["extra_nodes"]]]]] if s]

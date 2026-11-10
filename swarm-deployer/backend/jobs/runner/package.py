@@ -1,4 +1,4 @@
-"""Package phases: fetch the zip from the file server, extract and inspect it."""
+"""Package phases: fetch the zip from the target's packages folder, extract and inspect it."""
 import hashlib
 import json
 import os
@@ -20,18 +20,19 @@ from backend.utils.text import hsize
 class PackagePhases:
     # --- phases: return success message, raise Skip(msg) or Fail(msg)
     def p_fetch(self):
-        fs, path = self.cfg["file_server"], self.job["package_path"]
+        t, path = self.t, self.job["package_path"]
         name = posixpath.basename(path)
         os.makedirs(self.work, exist_ok=True)
         local = os.path.join(self.work, name)
-        where = f"sftp://{fs['host']}:{fs['port']}"
-        self.log(f"connecting {where} as {fs['username'] or '(anonymous)'}")
+        # ponytail: the zip comes here and the tar goes back to the target (extract is local, AES zips); unzip on
+        # the target instead if big images on a slow link make that round trip hurt
+        self.log(f"connecting {t['username']}@{t['host']}:{t['port']} for the package")
         try:
-            with fileserver(fs) as (_ls, get):
+            with fileserver(t) as (_ls, get):
                 self.log(f"downloading {path}")
                 size = get(path, local, self.progress("downloaded"))
         except FileNotFoundError:
-            raise Fail(f"file not found on the file server: {path}")
+            raise Fail(f"file not found on {t['id']}: {path}")
         self.local_zip = local
         self.job["artifacts"]["zip_size"] = size
         self.save()

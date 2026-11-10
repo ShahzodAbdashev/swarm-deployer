@@ -1,28 +1,24 @@
-// All settings on one page; #/settings/<section> scrolls to that card. Cards share one config object.
+// Settings: the target servers (SSH login + packages folder + backup folder). That is all the setup there is.
 import {$, alertBox, btn, confirm, ctlWithErr, errDetail, field, gridRow, h, icon, input, live, put, pwInput, retryAlert,
   setBusy, setErr, sget, showErrs, skeleton, testRes, toast} from './ui.js';
 import {API, RX, detailField, focusH1, hostErr, intErr, pathErr, portErr, setTitle, targetLabel, userErr} from './app.js';
 
-const SECS = [['file-server', 'File server'], ['targets', 'Target servers'], ['options', 'Backup & deploy options'], ['gitlab', 'GitLab'], ['import', 'Import .env']];
 const SAVED = '(saved) · leave blank to keep';
 
 export function settingsPage(main, {section}) {
   setTitle('Settings');
   const ret = sget('sd.return'), ok = live(), box = h('div');
-  let imported = null;
   put(main, h('div', {class: 'wrap'},
     h('a', {class: 'back-link', href: ret || '#/dashboard'}, icon('chevron-left'), ret ? 'Back to deploy' : 'Deployments'),
     h('div', {class: 'step-head'}, h('h1', {tabindex: '-1'}, 'Settings'),
-      h('p', {class: 'sub'}, 'Where packages come from, where they go, and how deploys are backed up.')),
-    h('nav', {class: 'secnav', 'aria-label': 'Settings sections'},
-      SECS.map(([id, label]) => h('a', {class: 'btn ghost', href: '#/settings/' + id, 'aria-current': section === id ? 'true' : null}, label))),
+      h('p', {class: 'sub'}, 'The target server: how to sign in, where new image zips arrive, and where backups go.')),
     box));
   focusH1();
   const load = () => {
-    put(box, h('div', {class: 'stack'}, [0, 1, 2].map(() => skeleton('100%', 120))));
+    put(box, h('div', {class: 'stack'}, [skeleton('100%', 120)]));
     API.config().then(cfg => {
       if (!ok()) return;
-      put(box, fileServerCard(cfg), targetsCard(cfg), optionsCard(cfg), gitlabCard(cfg), importCard(imported, r => { imported = r; load(); }));
+      put(box, targetsCard(cfg));
       if (section) $(section)?.scrollIntoView({block: 'start'});
     }).catch(e => { if (ok()) put(box, retryAlert("Couldn't load settings. " + errDetail(e).detail, load)); });
   };
@@ -49,96 +45,6 @@ const enterSubmits = (el, fn) => el.addEventListener('keydown', e => {
 });
 const portInput = (value, props) => input({type: 'number', min: '1', max: '65535', inputmode: 'numeric', value: String(value), ...props});
 const footer = (...kids) => h('div', {class: 'wfoot'}, kids);
-
-// ------------------------------------------------------------------ file server
-
-/** SFTP server where Build Packager uploads the zips (read-only for Swarm Deployer). Test uses the typed values without saving. */
-function fileServerCard(cfg) {
-  const API_FIELD = {protocol: 'fs-proto', host: 'fs-host', port: 'fs-port', username: 'fs-username', password: 'fs-password', private_key_path: 'fs-key', remote_dir: 'fs-dir'};
-  const f0 = cfg.file_server;
-  const proto = h('select', {class: 'input'}, [['sftp', 'SFTP server'], ['local', 'Folder on this computer']].map(([v, l]) =>
-    h('option', {value: v, selected: v === (f0.protocol || 'sftp') ? true : null}, l)));
-  const host = input({placeholder: 'files.example.com', value: f0.host});
-  const port = portInput(f0.port, {'aria-label': 'Port'});
-  const user = input({placeholder: 'deploy', value: f0.username});
-  const pw = pwInput({'data-secret': '1'});
-  const key = input({placeholder: '~/.ssh/id_ed25519', value: f0.private_key_path}, true);
-  const dir = input({placeholder: '/releases', value: f0.remote_dir}, true);
-  const res = h('div', {'aria-live': 'polite'});
-  const rmPw = h('button', {class: 'link', type: 'button', style: {alignSelf: 'flex-start', fontSize: '13px'}, onclick: () => removePw()}, 'Remove saved password');
-  const fill = f => {
-    proto.value = f.protocol || 'sftp'; host.value = f.host; port.value = String(f.port); user.value = f.username; key.value = f.private_key_path; dir.value = f.remote_dir;
-    pw.input.value = '';
-    pw.input.placeholder = f.has_password ? SAVED : '';
-    rmPw.hidden = !f.has_password;
-    mode();
-  };
-  let sftpRows = [];
-  const mode = () => { const local = proto.value === 'local'; sftpRows.forEach(e => { e.hidden = local; });
-    dir.placeholder = local ? '/home/me/releases' : '/releases'; };
-  const v = () => ({protocol: proto.value, host: host.value.trim(), port: Number(port.value), username: user.value.trim(), private_key_path: key.value.trim(), remote_dir: dir.value.trim()});
-  const st = errState(needHost => {
-    const x = v();
-    if (x.protocol === 'local') return {'fs-dir': x.remote_dir.startsWith('/') ? null : 'Enter a full folder path, like /home/me/releases.'};
-    return {'fs-host': x.host ? hostErr(x.host) : needHost ? 'Enter a host.' : null, 'fs-port': portErr(x.port),
-      'fs-username': userErr(x.username, true), 'fs-dir': pathErr(x.remote_dir)};
-  });
-  const payload = () => (pw.input.value ? {...v(), password: pw.input.value} : v());
-  const showApiErr = d => {
-    const id = detailField(d, pre => API_FIELD[pre]);
-    if (id) { put(res); st.apiErr(id, d); } else put(res, errAlert(d));
-  };
-
-  const saveBtn = btn('primary', 'Save', () => save());
-  const testBtn = btn('secondary', 'Test connection', () => test());
-  async function save() {
-    put(res);
-    const bad = st.check(false);
-    if (bad) { $(bad).focus(); return; }
-    setBusy(saveBtn, 'Saving…');
-    try {
-      const r = await API.putFileServer(payload());
-      setBusy(saveBtn, null);
-      cfg.file_server = r;
-      fill(r);
-      put(res, testRes(true, 'Saved.'));
-    } catch (e) { setBusy(saveBtn, null); showApiErr(errDetail(e).detail); }
-  }
-  async function test() {
-    put(res);
-    const bad = st.check(true);
-    if (bad) { $(bad).focus(); return; }
-    setBusy(testBtn, 'Testing… (up to 20s)');
-    try { const r = await API.testFileServer(payload()); put(res, testRes(r.ok, r.message)); } catch (e) { put(res, testRes(false, errDetail(e).detail)); }
-    setBusy(testBtn, null);
-  }
-  async function removePw() {
-    if (!(await confirm({title: 'Remove the saved password?', body: 'The file server will be used with the private key only, or fail if it needs a password.', confirm: 'Remove password'}))) return;
-    try {
-      const r = await API.putFileServer({password: ''});
-      cfg.file_server = r;
-      pw.input.placeholder = r.has_password ? SAVED : '';
-      rmPw.hidden = !r.has_password;
-      toast('Saved password removed', 'success');
-    } catch (e) { toast(errDetail(e).detail, 'error'); }
-  }
-
-  sftpRows = [h('label', {class: 'lbl', for: 'fs-host'}, 'Host and port'),
-    h('div', {class: 'ctl'}, h('div', {class: 'hostport'}, ctlWithErr('fs-host', host), ctlWithErr('fs-port', port))),
-    ...gridRow({id: 'fs-username', label: 'Username'}, user),
-    ...gridRow({id: 'fs-password', label: 'Password', extra: rmPw}, pw),
-    ...gridRow({id: 'fs-key', label: 'Private key', help: 'Optional. Used instead of, or with, the password.'}, key)];
-  proto.addEventListener('change', mode);
-  fill(f0);
-  const el = card('file-server', 'File server', 'Where the zips are: an SFTP server, or a folder on this computer you copy them into. Swarm Deployer only reads from it.',
-    h('div', {class: 'form-grid', oninput: () => st.onInput(false)},
-      gridRow({id: 'fs-proto', label: 'Source'}, proto),
-      sftpRows,
-      gridRow({id: 'fs-dir', label: 'Folder', help: 'SFTP: the folder the package list opens in, e.g. /releases. Local: the full path of the folder on this computer.'}, dir)),
-    footer(testBtn, h('span', {class: 'spacer'}), saveBtn), res);
-  enterSubmits(el, save);
-  return el;
-}
 
 // ------------------------------------------------------------------ targets
 
@@ -177,7 +83,9 @@ function targetsCard(cfg) {
       h('div', {class: 'main'},
         h('span', null, h('b', {style: {fontWeight: 500}}, t.name || t.id), h('span', {class: 'muted mono'}, ' · ' + t.id)),
         h('span', {class: 'mono muted'}, targetLabel(t) + ' · ' + t.docker_cmd + ' · host key ' + t.host_key_policy
-          + (nodes ? ' · ' + nodes + ' extra node' + (nodes > 1 ? 's' : '') : '') + (t.registry?.url ? ' · registry ' + t.registry.url : ''))),
+          + (nodes ? ' · ' + nodes + ' extra node' + (nodes > 1 ? 's' : '') : '') + (t.registry?.url ? ' · registry ' + t.registry.url : '')),
+        h('span', {class: 'mono muted'}, t.packages_dir ? 'packages ' + t.packages_dir + ' · backups ' + t.backup_dir
+          : h('span', {class: 'warn'}, 'Packages folder not set: Edit to add it'))),
       h('div', {class: 'acts'}, testBtn, btn('ghost', 'Edit', () => edit(t)), btn('ghost', 'Delete', remove)),
       res);
   }
@@ -188,12 +96,12 @@ function targetsCard(cfg) {
 function targetForm(cfg, target, onCancel, onSaved) {
   const API_FIELD = {
     id: 'tg-id', name: 'tg-name', host: 'tg-host', port: 'tg-port', username: 'tg-username', password: 'tg-password', private_key_path: 'tg-key',
-    host_key_policy: 'tg-policy', docker_cmd: 'tg-docker', work_dir: 'tg-work', backup_dir: 'tg-backup',
+    host_key_policy: 'tg-policy', docker_cmd: 'tg-docker', packages_dir: 'tg-packages', backup_dir: 'tg-backup',
     'registry.url': 'tg-reg-url', 'registry.username': 'tg-reg-user', 'registry.password': 'tg-reg-password',
   };
   const isNew = !target;
   const t0 = target || {id: '', name: '', host: '', port: 22, username: '', has_password: false, private_key_path: '', host_key_policy: 'auto_add',
-    docker_cmd: 'docker', work_dir: '', backup_dir: '', extra_nodes: []};
+    docker_cmd: 'docker', packages_dir: '', backup_dir: '', extra_nodes: []};
   const reg0 = t0.registry || {url: '', username: '', has_password: false};
   const select = (value, opts) => h('select', {class: 'input'}, opts.map(([v, l]) => h('option', {value: v, selected: v === value ? true : null}, l)));
 
@@ -207,7 +115,7 @@ function targetForm(cfg, target, onCancel, onSaved) {
     key: input({placeholder: '~/.ssh/id_ed25519', value: t0.private_key_path}, true),
     policy: select(t0.host_key_policy, [['auto_add', 'auto_add · accept and remember new keys'], ['warn', 'warn · accept, log a warning'], ['reject', 'reject · only known_hosts']]),
     docker: select(t0.docker_cmd, [['docker', 'docker'], ['sudo -n docker', 'sudo -n docker']]),
-    work: input({placeholder: '/home/deploy/sd-work', value: t0.work_dir}, true),
+    packages: input({placeholder: '/home/deploy/releases', value: t0.packages_dir}, true),
     backup: input({placeholder: '/home/deploy/sd-backups', value: t0.backup_dir}, true),
     regUrl: input({placeholder: '192.192.192.175:5050', value: reg0.url}, true),
     regUser: input({value: reg0.username}),
@@ -241,7 +149,7 @@ function targetForm(cfg, target, onCancel, onSaved) {
   renderNodes();
 
   const v = () => ({id: f.id.value.trim(), name: f.name.value.trim(), host: f.host.value.trim(), port: Number(f.port.value), username: f.username.value.trim(),
-    private_key_path: f.key.value.trim(), host_key_policy: f.policy.value, docker_cmd: f.docker.value, work_dir: f.work.value.trim(), backup_dir: f.backup.value.trim()});
+    private_key_path: f.key.value.trim(), host_key_policy: f.policy.value, docker_cmd: f.docker.value, packages_dir: f.packages.value.trim(), backup_dir: f.backup.value.trim()});
   const nv = () => nodes.map(n => ({host: n.host.trim(), port: Number(n.port), username: n.username.trim(), private_key_path: n.private_key_path.trim(), pw: n.pw}));
   const st = errState(() => {
     const x = v(), e = {};
@@ -249,7 +157,7 @@ function targetForm(cfg, target, onCancel, onSaved) {
     e['tg-host'] = hostErr(x.host);
     e['tg-port'] = portErr(x.port);
     e['tg-username'] = userErr(x.username);
-    e['tg-work'] = pathErr(x.work_dir);
+    e['tg-packages'] = pathErr(x.packages_dir);
     e['tg-backup'] = pathErr(x.backup_dir);
     const ru = f.regUrl.value.trim(), rn = f.regUser.value.trim();
     e['tg-reg-url'] = !ru || (ru.length <= 253 && RX.reg.test(ru)) ? null : 'Host and port only, like 192.192.192.175:5050.';
@@ -309,8 +217,8 @@ function targetForm(cfg, target, onCancel, onSaved) {
       gridRow({id: 'tg-key', label: 'Private key'}, f.key),
       gridRow({id: 'tg-policy', label: 'Host key policy', extra: policyWarn}, f.policy),
       gridRow({id: 'tg-docker', label: 'Docker command'}, f.docker),
-      gridRow({id: 'tg-work', label: 'Work dir', help: 'Where the image .tar is uploaded. Created if missing.'}, f.work),
-      gridRow({id: 'tg-backup', label: 'Backup dir', help: 'Service specs and backup metadata are kept here.'}, f.backup),
+      gridRow({id: 'tg-packages', label: 'Packages folder', help: 'Full path where the new image zips arrive, e.g. /home/deploy/releases.'}, f.packages),
+      gridRow({id: 'tg-backup', label: 'Backup dir', help: 'Full path, e.g. /home/deploy/sd-backups. Backups go here; deploys use .work inside it for a moment.'}, f.backup),
       h('span', {class: 'lbl'}),
       h('div', {class: 'ctl'}, h('h3', {class: 'micro', style: {margin: 'var(--s3) 0 0'}}, 'Registry (optional)')),
       gridRow({id: 'tg-reg-url', label: 'Registry', help: 'Empty = no registry: the image is loaded on each node. With a registry, images under it are pushed and deployed by digest.'}, f.regUrl),
@@ -325,137 +233,4 @@ function targetForm(cfg, target, onCancel, onSaved) {
   el.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); save(); } });
   setTimeout(() => (isNew ? f.id : f.name).focus(), 0);
   return el;
-}
-
-// ------------------------------------------------------------------ options
-
-/** Backup retention, default .tar backup, rollout timeouts. */
-function optionsCard(cfg) {
-  const API_FIELD = {keep_backups: 'op-keep', converge_timeout: 'op-conv', update_monitor: 'op-mon', health_timeout: 'op-ht'};
-  const num = (a, b) => input({type: 'number', min: String(a), max: String(b), inputmode: 'numeric', style: {maxWidth: '140px'}});
-  const keep = num(1, 50), conv = num(10, 1800), mon = num(1, 600), ht = num(1, 600);
-  const tar = h('input', {type: 'checkbox', id: 'op-tar'}), prune = h('input', {type: 'checkbox', id: 'op-prune', 'aria-describedby': 'op-prune-help'});
-  const fill = o => {
-    keep.value = String(o.keep_backups); conv.value = String(o.converge_timeout); mon.value = String(o.update_monitor); ht.value = String(o.health_timeout);
-    tar.checked = !!o.save_image_tar; prune.checked = !!o.prune_after;
-  };
-  fill(cfg.options);
-  const v = () => ({keep_backups: Number(keep.value), save_image_tar: tar.checked, prune_after: prune.checked, converge_timeout: Number(conv.value),
-    update_monitor: Number(mon.value), health_timeout: Number(ht.value)});
-  const st = errState(() => {
-    const x = v();
-    return {'op-keep': intErr(x.keep_backups, 1, 50), 'op-conv': intErr(x.converge_timeout, 10, 1800),
-      'op-mon': intErr(x.update_monitor, 1, 600), 'op-ht': intErr(x.health_timeout, 1, 600)};
-  });
-  const res = h('div', {'aria-live': 'polite'});
-  const saveBtn = btn('primary', 'Save', () => save());
-  async function save() {
-    put(res);
-    const bad = st.check();
-    if (bad) { $(bad).focus(); return; }
-    setBusy(saveBtn, 'Saving…');
-    try { const r = await API.putOptions(v()); setBusy(saveBtn, null); cfg.options = r; fill(r); put(res, testRes(true, 'Saved.')); }
-    catch (e) {
-      setBusy(saveBtn, null);
-      const d = errDetail(e).detail, id = detailField(d, pre => API_FIELD[pre]);
-      if (id) st.apiErr(id, d); else put(res, errAlert(d));
-    }
-  }
-  const el = card('options', 'Backup & deploy options', null,
-    h('div', {class: 'form-grid'},
-      gridRow({id: 'op-keep', label: 'Keep backups', help: 'Per service. Older backup dirs and tags are pruned (1–50).'}, keep),
-      h('span', {class: 'lbl'}, 'Image .tar'),
-      h('div', {class: 'ctl'}, h('label', {class: 'cbx'}, tar, h('span', null, 'Save the current image as a .tar in every backup by default'))),
-      h('span', {class: 'lbl'}, 'Prune'),
-      h('div', {class: 'ctl'},
-        h('label', {class: 'cbx'}, prune, h('span', null, 'Run docker system prune -f on the target after a successful deploy')),
-        h('p', {class: 'help', id: 'op-prune-help'}, "Same as the CI's prune: removes all stopped containers on the manager and unused networks (also a stopped stack's networks), dangling images and build cache.")),
-      gridRow({id: 'op-conv', label: 'Converge timeout', help: 'Seconds to wait for all tasks to run the new image (10–1800).'}, conv),
-      gridRow({id: 'op-mon', label: 'Update monitor', help: 'Seconds swarm watches each task before it counts as updated (1–600).'}, mon),
-      gridRow({id: 'op-ht', label: 'Health timeout', help: 'Seconds to wait for the health check URL (1–600).'}, ht)),
-    footer(h('span', {class: 'spacer'}), saveBtn), res);
-  enterSubmits(el, save);
-  return el;
-}
-
-// ------------------------------------------------------------------ GitLab
-
-/** GitLab URL + access token, used only by "Import from GitLab project". */
-function gitlabCard(cfg) {
-  const g = cfg.gitlab;
-  const url = input({placeholder: 'http://192.168.33.175', value: g?.url || ''}, true);
-  const token = pwInput({'data-secret': '1', placeholder: g?.has_token ? SAVED : 'glpat-…'});
-  const res = h('div', {'aria-live': 'polite'});
-  const saveBtn = btn('primary', 'Save', async () => {
-    put(res);
-    setBusy(saveBtn, 'Saving…');
-    const body = {url: url.value.trim()};
-    if (token.input.value) body.token = token.input.value.trim();
-    try {
-      const r = await API.putGitlab(body);
-      cfg.gitlab = r;
-      url.value = r.url;
-      token.input.value = '';
-      token.input.placeholder = r.has_token ? SAVED : 'glpat-…';
-      put(res, testRes(true, r.has_token ? 'Saved.' : 'Saved. No token: a new URL needs its token again.'));
-    } catch (e) { put(res, testRes(false, errDetail(e).detail)); }
-    setBusy(saveBtn, null);
-  });
-  return card('gitlab', 'GitLab', 'Optional. Only needed for "Import from GitLab project" below.',
-    h('div', {class: 'form-grid'},
-      gridRow({id: 'gl-url', label: 'GitLab URL'}, url),
-      gridRow({id: 'gl-token', label: 'Access token', help: 'Personal access token with the api scope (reads CI/CD variables).'}, token)),
-    footer(h('span', {class: 'spacer'}), saveBtn), res);
-}
-
-// ------------------------------------------------------------------ import
-
-/** Fill settings from a .env (file or paste) or from a GitLab project's CI/CD variables. Values are never shown back. */
-function importCard(result, onImported) {
-  const file = h('input', {type: 'file', accept: '.env,text/plain'});
-  const text = h('textarea', {class: 'input mono', 'data-secret': '1', rows: '6', spellcheck: 'false', autocapitalize: 'off',
-    style: {height: 'auto', paddingTop: '8px'}, placeholder: 'FILE_SERVER_HOST=…\nBASE_DEVELOPMENT_HOST=…'});
-  const target = input({placeholder: 'dev', style: {maxWidth: '200px'}}, true);
-  const project = h('select', {class: 'input', disabled: true}, h('option', {value: ''}, 'Loading projects…'));
-  const errBox = h('div', {id: 'ie-err'});
-  file.addEventListener('change', async () => { const f0 = file.files?.[0]; if (f0) text.value = await f0.text(); file.value = ''; });
-
-  const envBtn = btn('primary', 'Import .env', () => run('env', envBtn));
-  const glBtn = btn('secondary', 'Import from GitLab', () => run('gitlab', glBtn), {disabled: true});
-  async function run(kind, b) {
-    errBox.replaceChildren();
-    if (kind === 'env' && !text.value.trim()) { put(errBox, testRes(false, 'Paste a .env or choose a file first.')); return; }
-    const other = b === envBtn ? glBtn : envBtn, otherWas = other.disabled;
-    setBusy(b, 'Importing…');
-    other.disabled = true;
-    try {
-      const tid = target.value.trim() || undefined;
-      const r = kind === 'env' ? await API.importEnv(text.value, tid) : await API.importGitlab(project.value, tid);
-      text.value = '';
-      onImported(r);
-    } catch (e) {
-      setBusy(b, null);
-      other.disabled = otherWas;
-      put(errBox, testRes(false, errDetail(e).detail));
-    }
-  }
-  API.gitlabProjects().then(ps => {
-    put(project, ps.map(p => h('option', {value: p.full_name}, p.full_name)));
-    project.disabled = false;
-    glBtn.disabled = !ps.length;
-  }).catch(e => project.replaceWith(testRes(false, "Couldn't load GitLab projects. " + errDetail(e).detail)));
-
-  return card('import', 'Import .env', 'Fills these settings from a .env file. Values are never shown back.',
-    h('div', {class: 'form-grid'},
-      gridRow({id: 'ie-file', label: '.env file'}, file),
-      gridRow({id: 'ie-text', label: 'Or paste it'}, text),
-      gridRow({id: 'ie-target', label: 'Target id', help: 'Target id for SSH/registry keys (default: the only target, or "dev").'}, target),
-      h('span', {class: 'lbl'}), h('div', {class: 'ctl'}, h('div', null, envBtn)),
-      gridRow({id: 'ie-project', label: 'GitLab project', help: "Reads the project's CI/CD variables (and its groups'), like the pipeline does."}, project),
-      h('span', {class: 'lbl'}), h('div', {class: 'ctl'}, h('div', null, glBtn))),
-    errBox,
-    result ? h('div', {id: 'ie-result', 'aria-live': 'polite'},
-      testRes(!result.errors.length || !!result.set.length, (result.project ? result.project + ' · ' : '') + 'Set: ' + (result.set.length ? result.set.join(', ') : 'nothing')),
-      result.ignored.length ? h('p', {class: 'muted micro'}, 'Ignored: ' + result.ignored.join(', ')) : null,
-      result.errors.map(e => testRes(false, e))) : null);
 }
