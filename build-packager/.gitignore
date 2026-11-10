@@ -1,0 +1,23 @@
+node_modules/
+dist/
+build/
+.next/
+coverage/
+__pycache__/
+.venv/
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
+.claude/settings.local.json
+
+# Local agent tooling artifacts
+ruvector.db
+agentdb.*
+*.rvf
+*.rvf.lock
+
+# Throwaway scratch output (see AGENTS.md "Project structure")
+tmp/
+*.bak

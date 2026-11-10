@@ -1,0 +1,12 @@
+{
+  "extraKnownMarketplaces": {
+    "dev-kit": {
+      "source": {
+        "source": "github",
+        "repo": "risqaliyevds/claude-dev-kit"
+      }
+    }
+  },
+  "model": "opusplan",
+  "advisorModel": "opus"
+}
